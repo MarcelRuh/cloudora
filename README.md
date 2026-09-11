@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> Status: **v1.1.1** – Self-Hosted Cloud Storage mit Papierkorb, 2FA, Backup und öffentlichen Ordner-ZIPs.
+> Status: **v1.2.0** – Self-Hosted Cloud Storage mit Papierkorb, 2FA, Backup und Self-Update.
 
 Cloudora ist der zentrale Datei- und Cloud-Speicher der gleichen Software-Familie wie [Proxora](https://github.com/MarcelRuh/proxora): dunkles, technisches UI, klare Administration, Self-Hosting hinter Nginx Proxy Manager.
 
@@ -30,7 +30,7 @@ Repository: [github.com/MarcelRuh/cloudora](https://github.com/MarcelRuh/cloudor
 - Dashboard, Benutzerverwaltung, Quotas in MB/GB, Audit-Log, Systeminfos inkl. freiem Speicher
 - Datenbank-Backup in der UI (`pg_dump`); Dateien vom Host-Mount sichern
 - Globale Suche (`Ctrl+K`)
-- Docker Compose, PostgreSQL, persistenter Storage
+- Docker Compose, PostgreSQL, persistenter Storage, in-app Self-Update
 
 ## Screenshots
 
@@ -234,7 +234,7 @@ npm run typecheck
 
 ## Updating
 
-In der UI: **Administration → System** zeigt `current` vs. `latest` (GitHub Releases).
+In der UI (empfohlen): **Administration → System → Jetzt aktualisieren**. Zeigt `current → latest`, Changelog und Fortschritt. Der Sidecar baut den Stack neu; `.env` und Storage bleiben.
 
 CLI (erhält `.env` und Storage):
 

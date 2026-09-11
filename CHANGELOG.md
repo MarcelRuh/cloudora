@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0 – 2026-09-11
+
+- Self-Update in der UI (Administration → System): GitHub-Release holen, Stack neu bauen, Fortschritt
+- Sidecar `cloudora-updater` mit `docker.sock`; die App selbst hat keinen Socket
+- Erstes GitHub-Release (`v1.2.0`) als Basis für den Updater
+
 ## 1.1.1 – 2026-09-11
 
 - QR-Code bei der TOTP-2FA-Einrichtung

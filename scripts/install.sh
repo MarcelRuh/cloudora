@@ -129,6 +129,10 @@ prepare_env() {
   host_storage="$(host_storage_from_env)"
   mkdir -p "$host_storage"
   log "Storage-Mount: ${host_storage}"
+  if ! grep -q '^CLOUDORA_INSTALL_DIR=' .env 2>/dev/null; then
+    echo "CLOUDORA_INSTALL_DIR=${DIR}" >> .env
+  fi
+  chmod +x scripts/*.sh 2>/dev/null || true
 }
 
 start_stack() {

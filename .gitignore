@@ -38,6 +38,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# self-update runtime files
+/.cloudora-revision
+/.cloudora-update-progress
+/.cloudora-update-compose.log
+/.cloudora-update.lock
+
 # prisma
 prisma/*.db
 prisma/*.db-journal

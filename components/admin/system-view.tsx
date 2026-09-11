@@ -2,11 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { SelfUpdateCard } from "@/components/admin/self-update-card";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api, ApiRequestError } from "@/lib/api";
 import { formatBytes, formatDateTime } from "@/lib/format";
-import { APP_VERSION } from "@/lib/version";
 
 type Info = {
   version: string;
@@ -71,20 +71,7 @@ export function SystemView() {
         <h1 className="cloudora-title text-2xl">System</h1>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <p className="cloudora-section">Cloudora</p>
-          <p className="cloudora-stat mt-2 text-3xl">v{data?.currentVersion ?? APP_VERSION}</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Neueste Version: {data?.latestVersion ?? "nicht prüfbar"}
-          </p>
-          {data?.updateAvailable ? (
-            <a className="mt-3 inline-block text-sm text-primary" href={data.releaseUrl ?? "https://github.com/MarcelRuh/cloudora"} target="_blank" rel="noreferrer">
-              Update auf GitHub ansehen
-            </a>
-          ) : (
-            <p className="mt-3 text-sm text-success">Aktuell</p>
-          )}
-        </Card>
+        <SelfUpdateCard />
         <Card>
           <p className="cloudora-section">Laufzeit</p>
           <dl className="mt-3 space-y-2 text-sm">

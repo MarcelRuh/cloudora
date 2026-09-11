@@ -14,6 +14,10 @@ From a checkout:
 sudo bash scripts/install.sh
 ```
 
+The app container does **not** get `docker.sock`. Self-update is performed by `cloudora-updater` (sidecar) after the UI writes a signal file.
+
+Set `CLOUDORA_INSTALL_DIR` to the host checkout (default `/opt/cloudora`). The wget installer writes that into `.env`.
+
 ## Docker Compose
 
 ```bash

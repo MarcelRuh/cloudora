@@ -1,35 +1,30 @@
 #!/usr/bin/env bash
-# Cloudora host-side updater
+# Cloudora host-side updater (CLI counterpart to Administration → System)
 #
 # wget -qO- https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/update.sh | bash
 set -euo pipefail
 
-echo "Cloudora update"
-echo "Preserves .env, Docker volumes and ./storage"
+REPO="${CLOUDORA_REPO:-MarcelRuh/cloudora}"
+BRANCH="${CLOUDORA_BRANCH:-main}"
 
 SCRIPT="${BASH_SOURCE[0]:-$0}"
 if [[ -f "$SCRIPT" && "$SCRIPT" != /dev/fd/* && "$SCRIPT" != "-" ]]; then
-  ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
+  DEFAULT_DIR="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
 else
-  ROOT="${CLOUDORA_DIR:-/opt/cloudora}"
+  DEFAULT_DIR="/opt/cloudora"
 fi
-cd "$ROOT"
+INSTALL_DIR="${CLOUDORA_DIR:-${CLOUDORA_INSTALL_DIR:-$DEFAULT_DIR}}"
 
-if [[ ! -f .env ]]; then
-  echo "Missing .env – aborting." >&2
-  exit 1
-fi
+export CLOUDORA_INSTALL_DIR="$INSTALL_DIR"
+export CLOUDORA_REPO="$REPO"
+export CLOUDORA_BRANCH="$BRANCH"
 
-BRANCH="${CLOUDORA_BRANCH:-main}"
-REPO="${CLOUDORA_REPO:-MarcelRuh/cloudora}"
-
-if [[ -d .git ]]; then
-  git fetch origin "$BRANCH"
-  git merge --ff-only "origin/$BRANCH" || git pull --ff-only origin "$BRANCH"
-else
-  echo "No git checkout; skip source sync. Clone from https://github.com/${REPO}.git"
+if [[ -f "${INSTALL_DIR}/scripts/self-update-apply.sh" ]]; then
+  exec sh "${INSTALL_DIR}/scripts/self-update-apply.sh"
 fi
 
-docker compose -f docker-compose.prod.yml up -d --build
-
-echo "Cloudora update finished."
+TMP="$(mktemp)"
+trap 'rm -f "$TMP"' EXIT
+wget -qO "$TMP" "https://raw.githubusercontent.com/${REPO}/${BRANCH}/scripts/self-update-apply.sh"
+chmod +x "$TMP"
+exec sh "$TMP"

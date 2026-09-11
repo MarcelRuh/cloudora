@@ -8,6 +8,7 @@ Internet
     → cloudora:3000 (Next.js)
       → PostgreSQL
       → /storage  (files)
+    → cloudora-updater (docker.sock + install dir; no app access)
 ```
 
 ## Layers
