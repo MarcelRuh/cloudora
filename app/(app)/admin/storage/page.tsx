@@ -80,7 +80,7 @@ export default function StoragePage() {
         <p className="cloudora-section">Administration</p>
         <h1 className="cloudora-title mt-1 text-3xl md:text-4xl">Speicher</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Der Compose-Bind (`CLOUDORA_HOST_STORAGE`, z. B. ein Proxmox-Mount) ist `/storage`. Extra-Volumes nur für weitere Host-Ordner außerhalb davon.
+          Zwei Setups: Die Datenplatte selbst als <span className="font-mono">CLOUDORA_HOST_STORAGE</span> (dann nichts extra linken), oder Cloudora auf der Installationsplatte und weitere Host-Ordner linken — NFS, USB, ZFS, Bind, LXC, egal unter welchem Pfad.
         </p>
       </div>
 
@@ -90,7 +90,7 @@ export default function StoragePage() {
         tabs={[
           { id: "overview", label: "Übersicht" },
           { id: "paths", label: "Standard-Pfade" },
-          { id: "volumes", label: "Host-Datenträger" },
+          { id: "volumes", label: "Host-Ordner" },
           { id: "homes", label: "Benutzer-Homes" },
         ]}
       />
@@ -116,10 +116,10 @@ export default function StoragePage() {
               <ul className="mt-2 space-y-2">
                 {data?.extraVolumes.map((vol) => (
                   <li key={vol.id} className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-primary">Host-Datenträger</p>
-                    <p className="text-sm font-medium">{vol.name}</p>
-                    <p className="font-mono text-xs text-muted-foreground">
-                      {vol.hostPath} → /volumes/{vol.id}
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-primary">Host-Ordner</p>
+                    <p className="font-mono text-sm">{vol.hostPath}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {vol.name} → /volumes/{vol.id}
                     </p>
                   </li>
                 ))}

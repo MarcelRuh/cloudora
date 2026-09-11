@@ -49,6 +49,12 @@ export function slugifyVolumeId(input: string): string {
   return slug;
 }
 
+/** Display name from a host path (`/mnt/nas/photos` → `photos`). */
+export function suggestVolumeName(hostPath: string): string {
+  const last = hostPath.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "";
+  return last.slice(0, 64) || "daten";
+}
+
 export function parseExtraVolumes(value: unknown): ExtraVolume[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -84,7 +90,7 @@ export function normalizeExtraVolume(input: { id: string; name: string; hostPath
   if (isBlockedSystemPath(hostPath, null)) {
     throw new AppError("FORBIDDEN", "Dieser Systempfad kann nicht gelinkt werden.", 403);
   }
-  const name = input.name.trim() || id;
+  const name = input.name.trim() || suggestVolumeName(hostPath);
   if (name.length > 64) {
     throw new AppError("INVALID_PATH", "Der Anzeigename ist zu lang.", 400);
   }

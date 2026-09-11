@@ -35,7 +35,7 @@ type Listing = {
   breadcrumbs: Breadcrumb[];
   scope: string;
   rootLabel: string;
-  mount?: { label: string; hostPath?: string };
+  mount?: { label: string; name?: string; hostPath?: string };
   items: ExplorerEntry[];
 };
 
@@ -43,12 +43,12 @@ function entryLabel(entry: ExplorerEntry): string {
   return entry.displayName || entry.name;
 }
 
-function MountBadge({ mount }: { mount?: { label: string; hostPath?: string } }) {
+function MountBadge({ mount }: { mount?: { label: string; name?: string; hostPath?: string } }) {
   if (!mount) return null;
   return (
     <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
       <HardDrive className="h-3 w-3 shrink-0" />
-      <span className="truncate">{mount.hostPath ? `${mount.label} · ${mount.hostPath}` : mount.label}</span>
+      <span className="truncate">{mount.hostPath || mount.name || mount.label}</span>
     </span>
   );
 }
@@ -311,11 +311,16 @@ export function FileExplorer({ user, initialPath }: { user: SessionUser; initial
         <div className="mb-3 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
           <HardDrive className="h-4 w-4 shrink-0 text-primary" />
           <div className="min-w-0">
-            <p className="font-medium text-primary">{listing.data.mount.label}</p>
+            <p className="font-medium text-primary">
+              {listing.data.mount.name || listing.data.mount.label}
+              <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-primary/80">
+                {listing.data.mount.label}
+              </span>
+            </p>
             {listing.data.mount.hostPath ? (
               <p className="truncate font-mono text-xs text-muted-foreground">{listing.data.mount.hostPath}</p>
             ) : (
-              <p className="text-xs text-muted-foreground">Dateien liegen auf einem zusätzlichen Host-Ordner, nicht in der Cloudora-Installation.</p>
+              <p className="text-xs text-muted-foreground">Zusätzlicher Ordner auf dem Host, unabhängig vom Cloudora-Installationsverzeichnis.</p>
             )}
           </div>
         </div>
@@ -442,7 +447,7 @@ export function FileExplorer({ user, initialPath }: { user: SessionUser; initial
             <p className="px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
               {menu.entry.mount.hostPath
                 ? `${menu.entry.mount.label} · ${menu.entry.mount.hostPath}`
-                : menu.entry.mount.label}
+                : `${menu.entry.mount.label}${menu.entry.mount.name ? ` · ${menu.entry.mount.name}` : ""}`}
             </p>
           ) : null}
           {menu.entry.editable ? (

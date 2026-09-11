@@ -41,6 +41,7 @@ export type ExplorerEntry = {
   displayName?: string;
   mount?: {
     label: string;
+    name?: string;
     hostPath?: string;
   };
 };

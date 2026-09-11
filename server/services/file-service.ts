@@ -54,7 +54,8 @@ function requirePerm(user: SessionUser, permission: Permission): void {
 function mountPayload(vol: { name: string; hostPath: string } | null, showHost: boolean) {
   if (!vol) return undefined;
   return {
-    label: "Host-Datenträger",
+    label: "Host-Ordner",
+    name: vol.name,
     hostPath: showHost ? vol.hostPath : undefined,
   };
 }
@@ -201,7 +202,7 @@ export async function renameEntry(user: SessionUser, virtualPath: string, newNam
   const source = resolveUserPath(user, virtualPath);
   if (source.virtualPath === "/") throw new AppError("FORBIDDEN", "Das Wurzelverzeichnis kann nicht umbenannt werden.", 400);
   if (isExtraVolumeRoot(source.absPath, storageRootAbs(), getCachedExtraVolumes())) {
-    throw new AppError("FORBIDDEN", "Host-Datenträger können nicht umbenannt werden.", 400);
+    throw new AppError("FORBIDDEN", "Host-Ordner können nicht umbenannt werden.", 400);
   }
   const stat = await statOrNull(source.absPath);
   if (!stat) throw new AppError("NOT_FOUND", "Datei oder Ordner nicht gefunden.", 404);
@@ -221,7 +222,7 @@ async function prepareDestination(user: SessionUser, from: string, toDir: string
   const source = resolveUserPath(user, from);
   if (source.virtualPath === "/") throw new AppError("FORBIDDEN", "Das Wurzelverzeichnis kann nicht verschoben werden.", 400);
   if (isExtraVolumeRoot(source.absPath, storageRootAbs(), getCachedExtraVolumes())) {
-    throw new AppError("FORBIDDEN", "Host-Datenträger können nicht verschoben werden.", 400);
+    throw new AppError("FORBIDDEN", "Host-Ordner können nicht verschoben werden.", 400);
   }
   const destParent = resolveUserPath(user, toDir);
   const dest = resolveUserPath(user, childVirtual(destParent.virtualPath, conflictName || source.name));
@@ -266,7 +267,7 @@ export async function copyEntry(user: SessionUser, from: string, toDir: string) 
 export async function deleteEntry(user: SessionUser, virtualPath: string) {
   const resolved = resolveUserPath(user, virtualPath);
   if (isExtraVolumeRoot(resolved.absPath, storageRootAbs(), getCachedExtraVolumes())) {
-    throw new AppError("FORBIDDEN", "Host-Datenträger können nicht gelöscht werden.", 400);
+    throw new AppError("FORBIDDEN", "Host-Ordner können nicht gelöscht werden.", 400);
   }
   const { moveToTrash } = await import("@/server/services/trash-service");
   await moveToTrash(user, virtualPath);

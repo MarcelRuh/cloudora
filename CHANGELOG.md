@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.5 – 2026-09-11
+
+- Host-Ordner sind mount-agnostisch: NFS, USB, ZFS, Bind, LXC — der Host-Pfad ist die Identität, der Name kommt vom letzten Pfadteil wenn leer
+- Administration und Explorer sprechen von Host-Ordnern, nicht von einem bestimmten Hypervisor
+
 ## 1.2.4 – 2026-09-11
 
 - Host-Datenträger im Explorer mit Platten-Icon, Badge und Banner (Name + Host-Pfad für Admins)

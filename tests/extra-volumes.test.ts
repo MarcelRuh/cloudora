@@ -16,6 +16,7 @@ import {
   parseExtraVolumes,
   resolveThroughExtraVolumes,
   slugifyVolumeId,
+  suggestVolumeName,
   syncAutoExtraVolumes,
 } from "@/server/storage/extra-volumes";
 import { filesystemPathOnHostStorage, remapConfiguredOntoHostStorage } from "@/server/storage/host-storage";
@@ -58,6 +59,14 @@ describe("host fs mapping", () => {
 });
 
 describe("extra volumes", () => {
+  it("names a volume from the last host-path segment", () => {
+    expect(suggestVolumeName("/mnt/nas/photos")).toBe("photos");
+    expect(suggestVolumeName("/media/usb")).toBe("usb");
+    expect(suggestVolumeName("/srv/daten/")).toBe("daten");
+    expect(suggestVolumeName("/")).toBe("daten");
+    expect(normalizeExtraVolume({ id: "photos", name: "", hostPath: "/mnt/nas/photos" }).name).toBe("photos");
+  });
+
   it("normalizes ids and rejects root", () => {
     expect(slugifyVolumeId("NAS Photos")).toBe("nas-photos");
     expect(normalizeExtraVolume({ id: "hdd", name: "HDD", hostPath: "/mnt/hdd" })).toEqual({

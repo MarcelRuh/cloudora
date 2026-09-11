@@ -8,9 +8,9 @@ Absolute path **inside** the process/container. Examples: `/storage`, `/home`, `
 
 Administrators browse this root. Docker: the path must exist in the container (bind-mount).
 
-`CLOUDORA_HOST_STORAGE` (default `./storage`) is the **host** path Compose bind-mounts onto `CLOUDORA_STORAGE_PATH` (default `/storage`). Point this at a Proxmox/ZFS dataset such as `/mnt/cloudora` so all files live on that disk. The path picker treats that host path as the volume — do not link it again as an extra volume.
+`CLOUDORA_HOST_STORAGE` (default `./storage`) is the **host** path Compose bind-mounts onto `CLOUDORA_STORAGE_PATH` (default `/storage`). That can be the install disk, an NFS share, a USB disk, or a hypervisor bind (Proxmox/LXC/…). If it already *is* your data disk, do not link the same path again as an extra volume.
 
-Extra disks besides the main bind: **Administration → Speicher → Volumes**, written to `docker-compose.cloudora-volumes.yml`. The sidecar recreates only the `cloudora` service (`docker compose up -d --no-build --no-deps cloudora`).
+Additional host folders besides the main bind: **Administration → Speicher → Host-Ordner**. Each chosen path (e.g. `/mnt/nas`, `/media/usb`, `/srv/daten`) is bind-mounted read-write and shows in the explorer under `/volumes/{id}` with a disk icon. Cloudora writes `docker-compose.cloudora-volumes.yml`; the sidecar recreates only the `cloudora` service (`docker compose up -d --no-build --no-deps cloudora`).
 
 To use the host `/home` directory:
 
@@ -26,7 +26,7 @@ Then set Storage-Root or a user Home-Pfad to `/home`.
 
 ## Extra volumes
 
-Admins link additional host directories in **Administration → Speicher → Volumes**. Cloudora writes `docker-compose.cloudora-volumes.yml` and the sidecar runs `docker compose up -d --no-build`. Linked folders appear in the explorer under `/volumes/{name}`.
+Admins link additional host directories in **Administration → Speicher → Host-Ordner**. Any host path works (`/mnt/hdd`, `/media/usb`, `/home/data`, …). Cloudora writes `docker-compose.cloudora-volumes.yml` and the sidecar applies it. Linked folders appear in the explorer under `/volumes/{id}` labeled as host folders.
 
 The path picker tab **Linux /** lists the **host** root via a read-only bind `/:/host`. You can pick `/mnt/hdd`, `/home`, … — not `/` itself.
 
