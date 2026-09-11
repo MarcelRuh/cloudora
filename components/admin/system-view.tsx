@@ -25,6 +25,7 @@ type Info = {
   storageTotalBytes: number | null;
   storageFreeBytes: number | null;
   storageLow: boolean;
+  disks?: Array<{ id: string; name: string; hostPath?: string; totalBytes: number; usedBytes: number; freeBytes: number }>;
   database: string;
   databaseBytes: number | null;
   docker: boolean;
@@ -95,14 +96,25 @@ export function SystemView() {
             <Row k="Frei" v={data?.storageFreeBytes != null ? formatBytes(data.storageFreeBytes) : "—"} />
             <Row k="Public URL" v={data?.publicUrl} />
           </dl>
+          {(data?.disks ?? []).length > 1 ? (
+            <ul className="mt-4 space-y-2 text-sm">
+              {data?.disks?.map((disk) => (
+                <li key={disk.id} className="flex justify-between gap-4 border-b border-white/5 py-1">
+                  <span className="text-muted-foreground">{disk.name}</span>
+                  <span className="truncate font-medium">
+                    {formatBytes(disk.usedBytes)} / {formatBytes(disk.totalBytes)} · {formatBytes(disk.freeBytes)} frei
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {data?.storageLow ? (
             <p className="mt-3 text-sm text-warning">
               Speicherplatz knapp: weniger als 1 GB oder unter 10 % frei. Dateien oder den Host-Mount prüfen.
             </p>
           ) : null}
           <p className="mt-4 text-xs text-muted-foreground">
-            Speicherort über `CLOUDORA_HOST_STORAGE` (Host-Mount) und `CLOUDORA_STORAGE_PATH` (Container). Extra-Volumes in
-            `docker-compose.override.yml`. Updates erhalten `.env` und das Storage-Volume.
+            `/mnt`, `/media` und `/srv` sind im Container schreibbar. Weitere ungewöhnliche Pfade als Host-Ordner linken.
           </p>
         </Card>
         <Card className="md:col-span-2">

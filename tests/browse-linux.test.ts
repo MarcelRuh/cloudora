@@ -93,4 +93,24 @@ describe("linux folder browse", () => {
     expect(() => mkdirLinuxDirectory(root, "neu")).toThrow(AppError);
     expect(() => mkdirLinuxDirectory("/", "nope")).toThrow(AppError);
   });
+
+  it("creates a folder through an extra-volume bind instead of host browse", () => {
+    const host = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-hostmkdir-"));
+    const live = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-livemkdir-"));
+    fs.mkdirSync(path.join(host, "mnt"));
+    fs.mkdirSync(path.join(host, "mnt", "hdd"));
+    process.env.CLOUDORA_HOST_ROOT = host;
+    try {
+      const created = mkdirLinuxDirectory("/mnt/hdd", "neu", [
+        { id: "hdd", hostPath: "/mnt/hdd", containerPath: live },
+      ]);
+      expect(created).toBe("/mnt/hdd/neu");
+      expect(fs.statSync(path.join(live, "neu")).isDirectory()).toBe(true);
+      expect(fs.existsSync(path.join(host, "mnt", "hdd", "neu"))).toBe(false);
+    } finally {
+      delete process.env.CLOUDORA_HOST_ROOT;
+      fs.rmSync(host, { recursive: true, force: true });
+      fs.rmSync(live, { recursive: true, force: true });
+    }
+  });
 });

@@ -3,7 +3,6 @@ import { requirePermission } from "@/server/auth/require";
 import { writeAudit } from "@/server/audit";
 import { assertSameOrigin, clientIp, jsonError, jsonOk } from "@/server/http";
 import { readJson } from "@/server/http-parse";
-import { directorySize } from "@/server/storage/fs";
 import { ensureStorageLayout, storageRoot } from "@/server/storage/scope";
 import {
   hydrateStoragePaths,
@@ -14,6 +13,7 @@ import { getEnv } from "@/server/env";
 import { prisma } from "@/server/db";
 import { inspectLinuxPath } from "@/server/storage/browse-linux";
 import { isMountPoint } from "@/server/storage/host-fs";
+import { listStorageDisks } from "@/server/storage/volume";
 import {
   AUTO_SHARED_VOLUME_ID,
   AUTO_USERS_VOLUME_ID,
@@ -34,7 +34,6 @@ export async function GET() {
     const env = getEnv();
     const paths = await hydrateStoragePaths();
     const root = storageRoot();
-    const used = await directorySize(root, root).catch(() => BigInt(0));
     const users = await prisma.user.findMany({
       select: {
         id: true,
@@ -49,6 +48,12 @@ export async function GET() {
     });
     const extras = await hydrateExtraVolumes();
     const binds = extraVolumeBinds(paths.storagePath, extras);
+    const disks = await listStorageDisks({
+      storagePath: root,
+      hostStorage: env.hostStorage,
+      extraVolumes: extras,
+    });
+    const primary = disks[0];
     return jsonOk({
       storagePath: paths.storagePath,
       hostStorage: env.hostStorage,
@@ -58,7 +63,10 @@ export async function GET() {
       storageStatus: inspectPath(paths.storagePath),
       usersDirStatus: inspectLinuxPath(paths.usersDir, paths.storagePath, binds, env.hostStorage),
       sharedDirStatus: inspectLinuxPath(paths.sharedDir, paths.storagePath, binds, env.hostStorage),
-      usedBytes: Number(used),
+      usedBytes: primary?.usedBytes ?? 0,
+      totalBytes: primary?.totalBytes ?? null,
+      freeBytes: primary?.freeBytes ?? null,
+      disks,
       users: users.map((u) => ({
         ...u,
         usedBytes: Number(u.usedBytes),
@@ -103,7 +111,7 @@ export async function PATCH(request: Request) {
           vol.id === AUTO_SHARED_VOLUME_ID,
       )
       .some((vol) => !isMountPoint(extraVolumeContainerPath(paths.storagePath, vol.id)));
-    let apply: { mode: "sidecar" | "manual"; message: string } | null = null;
+    let apply: { mode: "sidecar" | "manual" | "live"; message: string } | null = null;
     if (needsBind && (volumesChanged || bindPending)) {
       apply = requestComposeApply(synced, paths.storagePath);
     }

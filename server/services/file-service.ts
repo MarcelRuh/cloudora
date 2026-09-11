@@ -35,6 +35,7 @@ import {
 import { assertQuota, bumpUsedBytes } from "@/server/storage/quota";
 import { scopeForUser } from "@/server/storage/scope";
 import {
+  extraVolumeAbsFromVirtual,
   extraVolumeForAbsPath,
   extraVolumeForChildName,
   getCachedExtraVolumes,
@@ -135,7 +136,10 @@ async function removeIndex(scopeKind: string, virtualPath: string): Promise<void
 }
 
 export function resolveUserPath(user: SessionUser, virtualPath: string): ResolvedPath {
-  return resolveScopedPath(scopeForUser(user), virtualPath);
+  const resolved = resolveScopedPath(scopeForUser(user), virtualPath);
+  const mapped = extraVolumeAbsFromVirtual(resolved.virtualPath, storageRootAbs(), getCachedExtraVolumes());
+  if (!mapped) return resolved;
+  return { ...resolved, absPath: mapped };
 }
 
 export async function listFiles(user: SessionUser, virtualPath: string) {

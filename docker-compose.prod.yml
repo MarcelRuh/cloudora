@@ -39,6 +39,9 @@ services:
       TRUST_PROXY: "true"
     volumes:
       - ${CLOUDORA_HOST_STORAGE:-./storage}:${CLOUDORA_STORAGE_PATH:-/storage}
+      - /mnt:/mnt:rslave
+      - /media:/media:rslave
+      - /srv:/srv:rslave
       - /:/host:ro,rslave
       - cloudora_update_signal:/update-signal
     depends_on:

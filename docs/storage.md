@@ -10,7 +10,9 @@ Administrators browse this root. Docker: the path must exist in the container (b
 
 `CLOUDORA_HOST_STORAGE` (default `./storage`) is the **host** path Compose bind-mounts onto `CLOUDORA_STORAGE_PATH` (default `/storage`). That can be the install disk, an NFS share, a USB disk, or a hypervisor bind (Proxmox/LXC/…). If it already *is* your data disk, do not link the same path again as an extra volume.
 
-Additional host folders besides the main bind: **Administration → Speicher → Host-Ordner**. Each chosen path (e.g. `/mnt/nas`, `/media/usb`, `/srv/daten`) is bind-mounted read-write and shows in the explorer under `/volumes/{id}` with a disk icon. Cloudora writes `docker-compose.cloudora-volumes.yml`; the sidecar recreates only the `cloudora` service (`docker compose up -d --no-build --no-deps cloudora`).
+Compose always bind-mounts `/mnt`, `/media` and `/srv` read-write at the same paths. Creating folders and using those trees does not require a container restart. `/` is still listed via the read-only `/host` browse bind.
+
+Additional host folders for the explorer: **Administration → Speicher → Host-Ordner**. Paths under `/mnt`, `/media` or `/srv` are used immediately. Only unusual paths (e.g. `/home/data`) still write `docker-compose.cloudora-volumes.yml` and recreate the app container.
 
 To use the host `/home` directory:
 
@@ -26,7 +28,7 @@ Then set Storage-Root or a user Home-Pfad to `/home`.
 
 ## Extra volumes
 
-Admins link additional host directories in **Administration → Speicher → Host-Ordner**. Any host path works (`/mnt/hdd`, `/media/usb`, `/home/data`, …). Cloudora writes `docker-compose.cloudora-volumes.yml` and the sidecar applies it. Linked folders appear in the explorer under `/volumes/{id}` labeled as host folders.
+Admins link additional host directories in **Administration → Speicher → Host-Ordner**. Paths under `/mnt`, `/media` or `/srv` are live immediately. Other host paths still use `docker-compose.cloudora-volumes.yml`. Linked folders appear in the explorer under `/volumes/{id}`.
 
 The path picker tab **Linux /** lists the **host** root via a read-only bind `/:/host`. You can pick `/mnt/hdd`, `/home`, … — not `/` itself.
 

@@ -6,6 +6,7 @@ describe("volume stats", () => {
     const stats = volumeStatsFromStatfs({ bsize: 4096, blocks: 1024, bavail: 256 });
     expect(stats.totalBytes).toBe(1024 * 4096);
     expect(stats.freeBytes).toBe(256 * 4096);
+    expect(stats.usedBytes).toBe((1024 - 256) * 4096);
   });
 
   it("warns below 1 GB or 10 percent", () => {

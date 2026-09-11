@@ -51,7 +51,7 @@ export async function PUT(request: Request) {
       action: "UPDATE_STORAGE_VOLUMES",
       target: volumes.map((vol) => vol.id).join(",") || "none",
     });
-    let apply: { mode: "sidecar" | "manual"; message: string } | null = null;
+    let apply: { mode: "sidecar" | "manual" | "live"; message: string } | null = null;
     if (body.apply) {
       apply = requestComposeApply(volumes, paths.storagePath);
     }
@@ -74,10 +74,10 @@ export async function POST() {
       ip: await clientIp(),
       action: "APPLY_STORAGE_VOLUMES",
       target: volumes.map((vol) => vol.id).join(",") || "none",
-      result: apply.mode === "sidecar" ? "SUCCESS" : "FAILURE",
+      result: apply.mode === "manual" ? "FAILURE" : "SUCCESS",
       error: apply.mode === "manual" ? apply.message : null,
     });
-    return jsonOk(apply, apply.mode === "sidecar" ? 200 : 400);
+    return jsonOk(apply, apply.mode === "manual" ? 400 : 200);
   } catch (error) {
     return jsonError(error);
   }

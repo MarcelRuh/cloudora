@@ -3,10 +3,10 @@ import os from "node:os";
 import { APP_VERSION } from "@/lib/version";
 import { prisma } from "@/server/db";
 import { getEnv } from "@/server/env";
-import { directorySize } from "@/server/storage/fs";
 import { hydrateStoragePaths } from "@/server/storage/config";
 import { storageRoot } from "@/server/storage/scope";
-import { diskWarning, volumeStats } from "@/server/storage/volume";
+import { hydrateExtraVolumes } from "@/server/storage/extra-volumes";
+import { diskWarning, listStorageDisks, volumeStats } from "@/server/storage/volume";
 
 const STARTED_AT = Date.now();
 
@@ -14,12 +14,12 @@ export async function systemInfo() {
   const env = getEnv();
   const paths = await hydrateStoragePaths();
   const root = storageRoot();
-  let storageBytes = BigInt(0);
-  try {
-    storageBytes = await directorySize(root, root);
-  } catch {
-    storageBytes = BigInt(0);
-  }
+  const extras = await hydrateExtraVolumes();
+  const disks = await listStorageDisks({
+    storagePath: root,
+    hostStorage: env.hostStorage,
+    extraVolumes: extras,
+  });
   const volume = fs.existsSync(root) ? await volumeStats(root) : null;
   let dbOk = false;
   let dbSize: number | null = null;
@@ -44,10 +44,11 @@ export async function systemInfo() {
     usersDir: paths.usersDir,
     sharedDir: paths.sharedDir,
     storageExists: fs.existsSync(root),
-    storageBytes: Number(storageBytes),
+    storageBytes: volume?.usedBytes ?? 0,
     storageTotalBytes: volume?.totalBytes ?? null,
     storageFreeBytes: volume?.freeBytes ?? null,
     storageLow: volume ? diskWarning(volume) : false,
+    disks,
     database: dbOk ? "online" : "offline",
     databaseBytes: dbSize,
     docker: Boolean(process.env.container || fs.existsSync("/.dockerenv")),

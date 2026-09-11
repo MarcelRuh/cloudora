@@ -1,5 +1,6 @@
 import { isInsideStorageRoot } from "@/lib/posix-path";
 import { isAbsolutePosixPath } from "@/server/storage/configured-path";
+import { isLiveNativeWritable } from "@/server/storage/host-fs";
 
 /** Absolute Compose bind on the host, e.g. `/mnt/cloudora`. Relative `./storage` is ignored. */
 export function normalizeHostStoragePath(hostStorage: string): string {
@@ -51,5 +52,6 @@ export function configuredPathNeedsHostBind(
   if (isInsideStorageRoot(raw, storageRoot)) return false;
   const host = normalizeHostStoragePath(hostStorage);
   if (host && (raw === host || raw.startsWith(`${host}/`))) return false;
+  if (isLiveNativeWritable(raw)) return false;
   return true;
 }

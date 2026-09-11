@@ -10,7 +10,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SegmentTabs } from "@/components/ui/tabs";
 import { api, ApiRequestError } from "@/lib/api";
-import { formatBytes } from "@/lib/format";
+import { formatBytes, diskPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type PathStatus = {
@@ -23,8 +23,20 @@ type PathStatus = {
 };
 type StorageTab = "overview" | "paths" | "volumes" | "homes";
 
+type DiskSnapshot = {
+  id: string;
+  name: string;
+  hostPath?: string;
+  totalBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+};
+
 type Storage = {
   usedBytes: number;
+  totalBytes: number | null;
+  freeBytes: number | null;
+  disks: DiskSnapshot[];
   storagePath: string;
   hostStorage: string;
   usersDir: string;
@@ -47,7 +59,7 @@ type Storage = {
 export default function StoragePage() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-storage"], queryFn: () => api<Storage>("/api/admin/storage") });
-  const [tab, setTab] = useState<StorageTab>("paths");
+  const [tab, setTab] = useState<StorageTab>("overview");
   const [storagePath, setStoragePath] = useState("");
   const [usersDir, setUsersDir] = useState("");
   const [sharedDir, setSharedDir] = useState("");
@@ -80,7 +92,7 @@ export default function StoragePage() {
         <p className="cloudora-section">Administration</p>
         <h1 className="cloudora-title mt-1 text-3xl md:text-4xl">Speicher</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Zwei Setups: Die Datenplatte selbst als <span className="font-mono">CLOUDORA_HOST_STORAGE</span> (dann nichts extra linken), oder Cloudora auf der Installationsplatte und weitere Host-Ordner linken — NFS, USB, ZFS, Bind, LXC, egal unter welchem Pfad.
+          Host-Ordner unter /mnt, /media und /srv sind im Container direkt schreibbar — ohne Extra-Compose und ohne Neustart. Im Explorer erscheinen sie unter /volumes/…, wenn du sie als Host-Ordner einträgst.
         </p>
       </div>
 
@@ -96,22 +108,22 @@ export default function StoragePage() {
       />
 
       {tab === "overview" ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <p className="text-sm text-muted-foreground">Gesamtbelegung</p>
-            <p className="cloudora-stat mt-2 text-3xl">{data ? formatBytes(data.usedBytes) : "—"}</p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Host-Bind: {data?.hostStorage || "—"} → {data?.storagePath || "—"}
-            </p>
-          </Card>
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            {(data?.disks ?? []).map((disk) => (
+              <DiskCard key={disk.id} disk={disk} />
+            ))}
+            {data && (data.disks ?? []).length === 0 ? (
+              <Card>
+                <p className="text-sm text-muted-foreground">Keine Datenträger-Statistik verfügbar.</p>
+              </Card>
+            ) : null}
+          </div>
           <Card className="space-y-2">
             <p className="cloudora-section">Aktuelle Pfade</p>
             <StatusRow label="Storage-Root" value={data?.storagePath} status={data?.storageStatus} />
             <StatusRow label="Benutzer-Ordner" value={data?.usersDir} status={data?.usersDirStatus} />
             <StatusRow label="Shared-Ordner" value={data?.sharedDir} status={data?.sharedDirStatus} />
-            <p className="pt-2 text-xs text-muted-foreground">
-              Extra-Volumes: {data?.extraVolumes?.length ?? 0}
-            </p>
             {(data?.extraVolumes ?? []).length > 0 ? (
               <ul className="mt-2 space-y-2">
                 {data?.extraVolumes.map((vol) => (
@@ -220,6 +232,23 @@ export default function StoragePage() {
         </Card>
       ) : null}
     </div>
+  );
+}
+
+function DiskCard({ disk }: { disk: DiskSnapshot }) {
+  const pct = diskPercent(disk.usedBytes, disk.totalBytes) ?? 0;
+  return (
+    <Card>
+      <p className="text-sm text-muted-foreground">{disk.name}</p>
+      <p className="cloudora-stat mt-2 text-3xl">{formatBytes(disk.freeBytes)} frei</p>
+      <div className="cloudora-gauge mt-3">
+        <span style={{ width: `${pct}%` }} />
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {formatBytes(disk.usedBytes)} von {formatBytes(disk.totalBytes)} belegt ({pct} %)
+      </p>
+      {disk.hostPath ? <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{disk.hostPath}</p> : null}
+    </Card>
   );
 }
 

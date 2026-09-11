@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.6 – 2026-09-11
+
+- Ordner im Path-Picker über den echten Host-Mount anlegen, nicht über das read-only-`/host`
+- Speicherübersicht zeigt Kapazität, Belegung und freien Platz per Datenträger (`statfs`), kein Dateibaum-Walk
+- `/mnt`, `/media` und `/srv` sind im Container schreibbar; Extra-Volumes darunter brauchen keinen Compose-Neustart
+
 ## 1.2.5 – 2026-09-11
 
 - Host-Ordner sind mount-agnostisch: NFS, USB, ZFS, Bind, LXC — der Host-Pfad ist die Identität, der Name kommt vom letzten Pfadteil wenn leer

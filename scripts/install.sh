@@ -127,6 +127,7 @@ prepare_env() {
   fi
   local host_storage
   host_storage="$(host_storage_from_env)"
+  mkdir -p /mnt /media /srv
   mkdir -p "$host_storage"
   log "Storage-Mount: ${host_storage}"
   if ! grep -q '^CLOUDORA_INSTALL_DIR=' .env 2>/dev/null; then

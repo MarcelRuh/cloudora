@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Files, Folder, HardDrive, Upload, Users } from "lucide-react";
 import { api } from "@/lib/api";
-import { formatBytes, greetingForNow, quotaPercent } from "@/lib/format";
+import { formatBytes, greetingForNow, quotaPercent, diskPercent } from "@/lib/format";
 import { formatDateTime } from "@/lib/format";
 import type { SessionUser } from "@/lib/types";
 import { Card } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 type Stats = {
   storageUsed: number;
   storageTotal: number | null;
+  disks?: Array<{ id: string; name: string; totalBytes: number; usedBytes: number; freeBytes: number }>;
   quotaBytes: number | null;
   usedBytes: number;
   files: number;
@@ -27,7 +28,16 @@ export function DashboardView({ user }: { user: SessionUser }) {
     queryFn: () => api<Stats>("/api/dashboard"),
   });
 
+  const diskPct = diskPercent(data?.storageUsed ?? 0, data?.storageTotal ?? 0);
   const quota = quotaPercent(user.usedBytes, user.quotaBytes);
+  const storageLabel =
+    data?.storageTotal != null
+      ? formatBytes(data.storageUsed)
+      : formatBytes(data?.usedBytes ?? user.usedBytes);
+  const storageHint =
+    data?.storageTotal != null
+      ? `${formatBytes(data.storageUsed)} / ${formatBytes(data.storageTotal)} (${diskPct ?? 0} %)`
+      : `${formatBytes(user.usedBytes)} / ${user.quotaBytes == null ? "unbegrenzt" : formatBytes(user.quotaBytes)}`;
 
   return (
     <div className="space-y-6">
@@ -38,13 +48,11 @@ export function DashboardView({ user }: { user: SessionUser }) {
         </h1>
       </div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={HardDrive} label="Speicher" value={formatBytes(data?.usedBytes ?? user.usedBytes)}>
+        <StatCard icon={HardDrive} label="Speicher" value={storageLabel}>
           <div className="cloudora-gauge mt-3">
-            <span style={{ width: `${quota ?? 8}%` }} />
+            <span style={{ width: `${diskPct ?? quota ?? 8}%` }} />
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {formatBytes(user.usedBytes)} / {user.quotaBytes == null ? "unbegrenzt" : formatBytes(user.quotaBytes)}
-          </p>
+          <p className="mt-2 text-xs text-muted-foreground">{storageHint}</p>
         </StatCard>
         <StatCard icon={Files} label="Dateien" value={String(data?.files ?? "—")} />
         <StatCard icon={Folder} label="Ordner" value={String(data?.folders ?? "—")} />

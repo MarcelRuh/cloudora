@@ -4,7 +4,7 @@ import { queryParam } from "@/server/http-parse";
 import { getEnv } from "@/server/env";
 import { hydrateStoragePaths } from "@/server/storage/config";
 import { browseLinuxDirectories } from "@/server/storage/browse-linux";
-import { EXTRA_VOLUMES_DIR, hydrateExtraVolumes } from "@/server/storage/extra-volumes";
+import { extraVolumeBinds, EXTRA_VOLUMES_DIR, hydrateExtraVolumes } from "@/server/storage/extra-volumes";
 
 export async function GET(request: Request) {
   try {
@@ -18,7 +18,13 @@ export async function GET(request: Request) {
       `${paths.storagePath.replace(/\/+$/, "")}/${EXTRA_VOLUMES_DIR}`,
       ...extras.map((vol) => vol.hostPath),
     ];
-    const data = browseLinuxDirectories(dir || "/", shortcuts, paths.storagePath);
+    const data = browseLinuxDirectories(
+      dir || "/",
+      shortcuts,
+      paths.storagePath,
+      extraVolumeBinds(paths.storagePath, extras),
+      getEnv().hostStorage,
+    );
     return jsonOk({
       ...data,
       storagePath: paths.storagePath,

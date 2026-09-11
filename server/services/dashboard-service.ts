@@ -1,8 +1,10 @@
 import { prisma } from "@/server/db";
 import { userHasPermission } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/types";
-import { directorySize } from "@/server/storage/fs";
+import { getEnv } from "@/server/env";
+import { hydrateExtraVolumes } from "@/server/storage/extra-volumes";
 import { storageRoot } from "@/server/storage/scope";
+import { listStorageDisks, type DiskSnapshot } from "@/server/storage/volume";
 
 export async function dashboardStats(user: SessionUser) {
   const [fileCount, folderCount, userCount, recent] = await Promise.all([
@@ -18,11 +20,19 @@ export async function dashboardStats(user: SessionUser) {
 
   let storageUsed = user.usedBytes;
   let storageTotal: number | null = user.quotaBytes;
+  let disks: DiskSnapshot[] = [];
   if (userHasPermission(user, "system.view")) {
     try {
-      const root = storageRoot();
-      storageUsed = Number(await directorySize(root, root));
-      storageTotal = null;
+      const extras = await hydrateExtraVolumes();
+      disks = await listStorageDisks({
+        storagePath: storageRoot(),
+        hostStorage: getEnv().hostStorage,
+        extraVolumes: extras,
+      });
+      if (disks.length > 0) {
+        storageUsed = disks.reduce((acc, disk) => acc + disk.usedBytes, 0);
+        storageTotal = disks.reduce((acc, disk) => acc + disk.totalBytes, 0);
+      }
     } catch {
       /* keep user quota view */
     }
@@ -40,6 +50,7 @@ export async function dashboardStats(user: SessionUser) {
   return {
     storageUsed,
     storageTotal,
+    disks,
     quotaBytes: user.quotaBytes,
     usedBytes: user.usedBytes,
     files: fileCount,

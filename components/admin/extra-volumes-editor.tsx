@@ -49,7 +49,7 @@ export function ExtraVolumesEditor({
       setRows(res.extraVolumes);
       qc.invalidateQueries({ queryKey: ["admin-storage"] });
       qc.invalidateQueries({ queryKey: ["linux-browse"] });
-      toast.success(apply ? res.apply?.message || "Volumes übernommen" : "Volumes gespeichert");
+      toast.success(apply ? res.apply?.message || "Host-Ordner übernommen" : "Host-Ordner gespeichert");
     },
     onError: (e) => toast.error(e instanceof ApiRequestError ? e.message : "Fehler"),
   });
@@ -80,10 +80,9 @@ export function ExtraVolumesEditor({
       <div>
         <p className="cloudora-section">Host-Ordner</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Beliebiger Ordner auf dem Linux-Host: NFS, USB, ZFS, Bind-Mount, LXC-Mount — z. B.{" "}
-          <span className="font-mono">/mnt/nas</span>, <span className="font-mono">/media/usb</span>,{" "}
-          <span className="font-mono">/srv/daten</span>. Cloudora bleibt im Installationsverzeichnis. Nach dem Übernehmen erscheint der Ordner im Explorer mit Platten-Icon unter{" "}
-          <span className="font-mono">/volumes/…</span>.
+          Beliebiger Ordner auf dem Linux-Host. <span className="font-mono">/mnt</span>,{" "}
+          <span className="font-mono">/media</span> und <span className="font-mono">/srv</span> sind im Container
+          schreibbar — Ordner anlegen und nutzen ohne Neustart. Andere Pfade (z. B. unter /home) brauchen weiterhin einen Bind.
         </p>
       </div>
       <ul className="divide-y divide-white/5 rounded-lg border border-border">
@@ -129,7 +128,7 @@ export function ExtraVolumesEditor({
           onChange={setHostPath}
           storageRoot={storagePath}
           placeholder="/mnt/nas oder /media/usb"
-          hint="Linux / listet den Host. NFS, USB, ZFS, Bind — einen Unterordner wählen, nicht /."
+          hint="Linux / listet den Host. Unter /mnt, /media und /srv kannst du Ordner direkt anlegen."
         />
         <div className="flex items-end">
           <Button type="button" variant="outline" onClick={addRow}>
@@ -147,8 +146,7 @@ export function ExtraVolumesEditor({
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Übernehmen schreibt die Bind-Mounts und startet den App-Container neu (Sidecar). Ohne Sidecar: einmal{" "}
-        <span className="font-mono">docker compose up -d --no-build</span>.
+        Übernehmen speichert die Host-Ordner. Unter /mnt, /media und /srv sofort nutzbar. Andere Pfade starten den App-Container neu.
       </p>
     </Card>
   );

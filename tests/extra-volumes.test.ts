@@ -39,7 +39,9 @@ describe("host fs mapping", () => {
     expect(toFilesystemPath("/", host)).toBe(path.resolve(host));
     expect(toFilesystemPath("/mnt/hdd", host)).toBe(path.join(path.resolve(host), "mnt/hdd"));
     expect(toDisplayPath(path.join(host, "mnt/hdd"), host)).toBe("/mnt/hdd");
-    expect(toFilesystemPath("/storage/users", host)).toBe(path.resolve("/storage/users"));
+    expect(toFilesystemPath("/mnt/hdd", host, { mounts: ["/mnt"] })).toBe("/mnt/hdd");
+    expect(toFilesystemPath("/mnt/hdd", host, { mounts: [] })).toBe(path.join(path.resolve(host), "mnt/hdd"));
+    expect(toFilesystemPath("/storage/users", host, { mounts: [] })).toBe(path.resolve("/storage/users"));
     expect(isHostBrowseFsPath(path.join(host, "mnt/hdd"), host)).toBe(true);
     expect(isHostBrowseFsPath("/storage/users", host)).toBe(false);
   });

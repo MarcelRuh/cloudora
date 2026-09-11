@@ -124,6 +124,14 @@ function resolveAgainstStorage(input: string, storageRoot: string): string {
   return normalizeBrowsePath(path.join(storageRoot, raw));
 }
 
+function bindSuffix(display: string, fsPath: string, bind: VolumeBindHint): string {
+  if (display === bind.hostPath) return "";
+  if (display.startsWith(`${bind.hostPath}/`)) return display.slice(bind.hostPath.length);
+  if (fsPath === bind.containerPath) return "";
+  if (fsPath.startsWith(`${bind.containerPath}/`)) return fsPath.slice(bind.containerPath.length);
+  return "";
+}
+
 function matchBind(display: string, fsPath: string, binds: VolumeBindHint[]): VolumeBindHint | null {
   return (
     binds.find(
@@ -136,6 +144,38 @@ function matchBind(display: string, fsPath: string, binds: VolumeBindHint[]): Vo
   );
 }
 
+/** Writable/live path for a host display path: extra-volume bind, native mount, else `/host`. */
+export function resolveBrowseFsPath(
+  display: string,
+  storageRoot = "",
+  binds: VolumeBindHint[] = [],
+  hostStorage = "",
+): { fsPath: string; hostBrowse: boolean; bind: VolumeBindHint | null; live: boolean } {
+  const host = hostRoot();
+  if (storageRoot && hostStorage) {
+    const volumeFs = filesystemPathOnHostStorage(display, hostStorage, storageRoot);
+    if (volumeFs) {
+      return { fsPath: volumeFs, hostBrowse: false, bind: null, live: true };
+    }
+  }
+  const mapped = toFilesystemPath(display, host);
+  const bind = matchBind(display, mapped, binds);
+  const bindLive = Boolean(bind && !isHostBrowseFsPath(bind.containerPath, host));
+  if (bind && bindLive) {
+    const boundFs = `${bind.containerPath}${bindSuffix(display, mapped, bind)}`;
+    const live = isMountPoint(bind.containerPath) || isWritableDir(boundFs) || Boolean(safeStatDir(boundFs));
+    if (live || safeStatDir(boundFs)) {
+      return { fsPath: boundFs, hostBrowse: false, bind, live };
+    }
+  }
+  return {
+    fsPath: mapped,
+    hostBrowse: isHostBrowseFsPath(mapped, host),
+    bind,
+    live: Boolean(bind && isMountPoint(bind.containerPath)),
+  };
+}
+
 export function inspectLinuxPath(
   inputPath: string,
   storageRoot: string,
@@ -143,74 +183,55 @@ export function inspectLinuxPath(
   hostStorage = "",
 ): LinuxInspectResult {
   const display = resolveAgainstStorage(inputPath, storageRoot);
-  const host = hostRoot();
-  const volumeFs = filesystemPathOnHostStorage(display, hostStorage, storageRoot);
-  if (volumeFs) {
-    const status = inspectLinuxStatus(volumeFs);
-    return {
-      path: display,
-      ...status,
-      insideVolume: true,
-      configured: toConfiguredFromAbsolute(volumeFs, storageRoot, true),
-      hostBrowse: false,
-      linked: true,
-      live: true,
-      volumeId: null,
-    };
-  }
-  const fsPath = toFilesystemPath(display, host);
-  const hostBrowse = isHostBrowseFsPath(fsPath, host);
-  const bind = matchBind(display, fsPath, binds);
-  const base: Omit<LinuxInspectResult, keyof LinuxPathStatus> = {
-    path: display,
-    insideVolume: isInsideStorageRoot(fsPath, storageRoot) || isInsideStorageRoot(display, storageRoot),
-    configured: toConfiguredFromAbsolute(display, storageRoot, true),
-    hostBrowse,
-    linked: Boolean(bind),
-    live: false,
-    volumeId: bind?.id ?? null,
-  };
-
-  if (bind) {
-    const suffix =
-      display === bind.hostPath
-        ? ""
-        : display.startsWith(`${bind.hostPath}/`)
-          ? display.slice(bind.hostPath.length)
-          : fsPath.startsWith(`${bind.containerPath}/`)
-            ? fsPath.slice(bind.containerPath.length)
-            : "";
-    const boundFs = `${bind.containerPath}${suffix}`;
-    const live = isMountPoint(bind.containerPath);
-    const status = live ? inspectLinuxStatus(boundFs) : inspectLinuxStatus(display);
-    return {
-      ...base,
-      ...status,
-      writable: live ? status.writable : false,
-      insideVolume: live || base.insideVolume,
-      live,
-    };
-  }
-
-  const status = inspectLinuxStatus(display);
+  const resolved = resolveBrowseFsPath(display, storageRoot, binds, hostStorage);
+  const status = inspectLinuxStatus(resolved.fsPath);
+  const insideVolume =
+    resolved.live ||
+    isInsideStorageRoot(resolved.fsPath, storageRoot) ||
+    isInsideStorageRoot(display, storageRoot);
+  const configured = toConfiguredFromAbsolute(
+    resolved.live && !resolved.hostBrowse ? resolved.fsPath : display,
+    storageRoot,
+    true,
+  );
   return {
-    ...base,
+    path: display,
     ...status,
-    writable: hostBrowse ? false : status.writable,
+    writable: resolved.hostBrowse ? false : status.writable,
+    insideVolume,
+    configured,
+    hostBrowse: resolved.hostBrowse,
+    linked: Boolean(resolved.bind) || resolved.live,
+    live: resolved.live,
+    volumeId: resolved.bind?.id ?? null,
   };
 }
 
-export function mkdirLinuxDirectory(parentInput: string, name: string): string {
+export function mkdirLinuxDirectory(
+  parentInput: string,
+  name: string,
+  binds: VolumeBindHint[] = [],
+  storageRoot = "",
+  hostStorage = "",
+): string {
   const parentDisplay = normalizeBrowsePath(parentInput);
   if (parentDisplay === "/") {
     throw new AppError("FORBIDDEN", "Unter / kann kein Ordner angelegt werden.", 403);
   }
-  const parentFs = toFilesystemPath(parentDisplay, hostRoot());
+  const resolved = resolveBrowseFsPath(parentDisplay, storageRoot, binds, hostStorage);
+  const parentFs = resolved.fsPath;
   const safe = assertSafeFileName(name);
   const targetFs = path.join(parentFs, safe);
   const targetDisplay = toDisplayPath(targetFs, hostRoot());
   if (isBlocked(targetDisplay) || isBlocked(parentDisplay)) {
     throw new AppError("FORBIDDEN", "Dieser Systempfad kann nicht verändert werden.", 403);
+  }
+  if (resolved.hostBrowse) {
+    throw new AppError(
+      "FORBIDDEN",
+      "Dieser Host-Pfad ist nur lesbar. Wähle einen Ordner unter /mnt, /media oder /srv, oder einen bereits gelinkten Host-Ordner.",
+      403,
+    );
   }
   const self = safeStatDir(parentFs);
   if (!self?.readable) {
@@ -228,23 +249,30 @@ export function mkdirLinuxDirectory(parentInput: string, name: string): string {
     }
     throw new AppError("FORBIDDEN", "Ordner konnte nicht angelegt werden.", 403);
   }
-  return targetDisplay;
+  return path.posix.join(parentDisplay, safe);
 }
 
-export function browseLinuxDirectories(inputPath: string, extraShortcuts: string[] = [], storageRoot = ""): LinuxBrowseResult {
+export function browseLinuxDirectories(
+  inputPath: string,
+  extraShortcuts: string[] = [],
+  storageRoot = "",
+  binds: VolumeBindHint[] = [],
+  hostStorage = "",
+): LinuxBrowseResult {
   const host = hostRoot();
   let display = normalizeBrowsePath(inputPath);
-  let fsPath = toFilesystemPath(display, host);
+  let resolved = resolveBrowseFsPath(display, storageRoot, binds, hostStorage);
+  let fsPath = resolved.fsPath;
   const self = safeStatDir(fsPath);
   if (!self) {
-    display = display === "/" ? "/" : path.dirname(display);
-    fsPath = toFilesystemPath(display, host);
+    display = display === "/" ? "/" : path.posix.dirname(display) || "/";
+    resolved = resolveBrowseFsPath(display, storageRoot, binds, hostStorage);
+    fsPath = resolved.fsPath;
     if (isBlocked(display)) {
       throw new AppError("NOT_FOUND", "Verzeichnis nicht gefunden.", 404);
     }
   } else {
     fsPath = self.fsPath;
-    display = toDisplayPath(fsPath, host);
   }
 
   let real = fsPath;
@@ -256,7 +284,9 @@ export function browseLinuxDirectories(inputPath: string, extraShortcuts: string
   if (isBlockedSystemPath(real, host) || isBlocked(toDisplayPath(real, host))) {
     throw new AppError("FORBIDDEN", "Dieser Systempfad kann nicht durchsucht werden.", 403);
   }
-  display = toDisplayPath(real, host);
+  if (resolved.hostBrowse || (!resolved.bind && !resolved.live)) {
+    display = toDisplayPath(real, host);
+  }
 
   const entries: LinuxDirEntry[] = [];
   let truncated = false;
@@ -269,12 +299,16 @@ export function browseLinuxDirectories(inputPath: string, extraShortcuts: string
       }
       if (!dirent.name || dirent.name.startsWith(".")) continue;
       const childFs = path.join(real, dirent.name);
-      const childDisplay = toDisplayPath(childFs, host);
+      const childDisplay = resolved.bind || resolved.live ? path.posix.join(display, dirent.name) : toDisplayPath(childFs, host);
       if (isBlocked(childDisplay) || isBlockedSystemPath(childFs, host)) continue;
       if (!dirent.isDirectory() && !dirent.isSymbolicLink()) continue;
       const info = safeStatDir(childFs);
       if (!info) continue;
-      entries.push({ name: dirent.name, path: toDisplayPath(info.fsPath, host), readable: info.readable });
+      entries.push({
+        name: dirent.name,
+        path: resolved.bind || resolved.live ? childDisplay : toDisplayPath(info.fsPath, host),
+        readable: info.readable,
+      });
     }
   } catch {
     throw new AppError("FORBIDDEN", "Keine Berechtigung, dieses Verzeichnis zu lesen.", 403);
@@ -292,7 +326,7 @@ export function browseLinuxDirectories(inputPath: string, extraShortcuts: string
     } catch {
       continue;
     }
-    const info = safeStatDir(toFilesystemPath(displayShortcut, host));
+    const info = safeStatDir(resolveBrowseFsPath(displayShortcut, storageRoot, binds, hostStorage).fsPath);
     if (!info || seen.has(displayShortcut)) continue;
     seen.add(displayShortcut);
     shortcuts.push({
@@ -302,14 +336,17 @@ export function browseLinuxDirectories(inputPath: string, extraShortcuts: string
     });
   }
 
+  const hostBrowse = isHostBrowseFsPath(real, host);
   return {
     path: display,
     parent: display === "/" ? null : path.posix.dirname(display) || "/",
-    writable: isWritableDir(real),
+    writable: !hostBrowse && isWritableDir(real),
     truncated,
-    insideVolume: storageRoot
-      ? isInsideStorageRoot(real, storageRoot) || isInsideStorageRoot(display, storageRoot)
-      : false,
+    insideVolume:
+      resolved.live ||
+      (storageRoot
+        ? isInsideStorageRoot(real, storageRoot) || isInsideStorageRoot(display, storageRoot)
+        : false),
     entries,
     shortcuts,
   };

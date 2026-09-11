@@ -31,6 +31,11 @@ export function quotaPercent(used: number, quota: number | null): number | null 
   return Math.min(100, Math.round((used / quota) * 1000) / 10);
 }
 
+export function diskPercent(used: number, total: number): number | null {
+  if (!Number.isFinite(total) || total <= 0) return null;
+  return Math.min(100, Math.round((used / total) * 1000) / 10);
+}
+
 export type QuotaUnit = "MB" | "GB";
 
 export function bytesFromQuota(amount: number, unit: QuotaUnit): number {

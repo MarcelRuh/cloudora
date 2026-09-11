@@ -1,10 +1,10 @@
-# Extra Host-Mounts (manuell). UI-Volumes liegen in docker-compose.cloudora-volumes.yml.
+# Extra Host-Mounts (manuell). /mnt, /media und /srv sind bereits im Container.
 #
+# Nur ungewöhnliche Pfade brauchen noch ein Extra-Bind, z. B.:
 # services:
 #   cloudora:
 #     volumes:
-#       - /mnt/nas/photos:/storage/volumes/photos
-#       - /home:/home
+#       - /home/daten:/storage/volumes/daten
 #
 # Danach: docker compose up -d --no-build
 
