@@ -1,10 +1,11 @@
-import fs from "node:fs";
 import path from "node:path";
 import { prisma } from "@/server/db";
 import { getEnv } from "@/server/env";
 import { AppError } from "@/lib/errors";
 import { isBuildPhase } from "@/lib/utils";
-import { isAbsolutePosixPath, normalizeConfiguredPath, resolveConfiguredPath } from "@/server/storage/configured-path";
+import { isAbsolutePosixPath, normalizeConfiguredPath } from "@/server/storage/configured-path";
+import { extraVolumeBinds, getCachedExtraVolumes, hydrateExtraVolumes, resolveThroughExtraVolumes } from "@/server/storage/extra-volumes";
+import { inspectLinuxPath } from "@/server/storage/browse-linux";
 
 export const STORAGE_PATHS_KEY = "storage.paths";
 
@@ -44,28 +45,18 @@ export function sharedDirName(): string {
 
 export function resolveUsersDirAbs(): string {
   const cfg = getStoragePaths();
-  return resolveConfiguredPath(cfg.usersDir, cfg.storagePath);
+  return resolveThroughExtraVolumes(cfg.usersDir, cfg.storagePath, getCachedExtraVolumes());
 }
 
 export function resolveSharedDirAbs(): string {
   const cfg = getStoragePaths();
-  return resolveConfiguredPath(cfg.sharedDir, cfg.storagePath);
+  return resolveThroughExtraVolumes(cfg.sharedDir, cfg.storagePath, getCachedExtraVolumes());
 }
 
 export function inspectPath(absPath: string): { exists: boolean; isDirectory: boolean; writable: boolean } {
-  try {
-    const st = fs.statSync(absPath);
-    let writable = false;
-    try {
-      fs.accessSync(absPath, fs.constants.W_OK);
-      writable = true;
-    } catch {
-      writable = false;
-    }
-    return { exists: true, isDirectory: st.isDirectory(), writable };
-  } catch {
-    return { exists: false, isDirectory: false, writable: false };
-  }
+  const cfg = getStoragePaths();
+  const inspected = inspectLinuxPath(absPath, cfg.storagePath, extraVolumeBinds(cfg.storagePath, getCachedExtraVolumes()));
+  return { exists: inspected.exists, isDirectory: inspected.isDirectory, writable: inspected.writable };
 }
 
 function parseStored(value: unknown): Partial<StoragePaths> {
@@ -79,7 +70,10 @@ function parseStored(value: unknown): Partial<StoragePaths> {
 }
 
 export async function hydrateStoragePaths(): Promise<StoragePaths> {
-  if (loadedFromDb && cached) return cached;
+  if (loadedFromDb && cached) {
+    await hydrateExtraVolumes();
+    return cached;
+  }
   const base = fromEnv();
   if (isBuildPhase()) {
     cached = base;
@@ -99,6 +93,7 @@ export async function hydrateStoragePaths(): Promise<StoragePaths> {
   } catch {
     cached = base;
   }
+  await hydrateExtraVolumes();
   return cached;
 }
 

@@ -2,7 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { prisma } from "@/server/db";
 import { AppError } from "@/lib/errors";
+import { isInsideStorageRoot } from "@/lib/posix-path";
 import { isBuildPhase } from "@/lib/utils";
+import { isSignalDirReady, resolveUpdateSignalDir } from "@/lib/self-update-signal";
+import { isAbsolutePosixPath, resolveConfiguredPath } from "@/server/storage/configured-path";
 import { assertSafeFileName } from "@/server/storage/path-resolver";
 import { isBlockedSystemPath } from "@/server/storage/host-fs";
 import { normalizeBrowsePath } from "@/server/storage/browse-linux";
@@ -12,11 +15,19 @@ export const EXTRA_VOLUMES_DIR = "volumes";
 export const COMPOSE_VOLUMES_FILE = "docker-compose.cloudora-volumes.yml";
 export const SIGNAL_VOLUMES_FILE = "extra-volumes.yml";
 export const SIGNAL_COMPOSE_UP = "compose-up";
+export const AUTO_USERS_VOLUME_ID = "users-host";
+export const AUTO_SHARED_VOLUME_ID = "shared-host";
 
 export type ExtraVolume = {
   id: string;
   name: string;
   hostPath: string;
+};
+
+export type VolumeBind = {
+  id: string;
+  hostPath: string;
+  containerPath: string;
 };
 
 const ID_RE = /^[a-z][a-z0-9_-]{0,31}$/;
@@ -79,6 +90,71 @@ export function extraVolumeContainerPath(storagePath: string, id: string): strin
   return `${root}/${EXTRA_VOLUMES_DIR}/${id}`;
 }
 
+export function extraVolumeBinds(storagePath: string, volumes: ExtraVolume[]): VolumeBind[] {
+  return volumes.map((vol) => ({
+    id: vol.id,
+    hostPath: vol.hostPath,
+    containerPath: extraVolumeContainerPath(storagePath, vol.id),
+  }));
+}
+
+/** Absolute host path outside the Docker volume — needs a RW bind; `/host` is read-only. */
+export function configuredPathNeedsHostBind(configured: string, storageRoot: string): boolean {
+  const raw = configured.replace(/\\/g, "/").trim();
+  if (!isAbsolutePosixPath(raw)) return false;
+  return !isInsideStorageRoot(raw, storageRoot);
+}
+
+export function syncAutoExtraVolumes(
+  current: ExtraVolume[],
+  storagePath: string,
+  usersDir: string,
+  sharedDir: string,
+): ExtraVolume[] {
+  const autoIds = new Set([AUTO_USERS_VOLUME_ID, AUTO_SHARED_VOLUME_ID]);
+  const next = current.filter((vol) => !autoIds.has(vol.id));
+
+  const upsert = (id: string, name: string, configured: string) => {
+    if (!configuredPathNeedsHostBind(configured, storagePath)) return;
+    if (next.some((vol) => vol.hostPath === configured)) return;
+    next.push(normalizeExtraVolume({ id, name, hostPath: configured }));
+  };
+
+  upsert(AUTO_USERS_VOLUME_ID, "Benutzer-Ordner", usersDir);
+  upsert(AUTO_SHARED_VOLUME_ID, "Shared-Ordner", sharedDir);
+  return next;
+}
+
+export function extraVolumesFingerprint(volumes: ExtraVolume[]): string {
+  return volumes
+    .map((vol) => `${vol.id}=${vol.hostPath}`)
+    .sort()
+    .join("|");
+}
+
+let cachedVolumes: ExtraVolume[] | null = null;
+let volumesLoaded = false;
+
+export function resolveThroughExtraVolumes(
+  configured: string,
+  storageRoot: string,
+  volumes: ExtraVolume[],
+): string {
+  const resolved = resolveConfiguredPath(configured, storageRoot);
+  for (const vol of volumes) {
+    const container = extraVolumeContainerPath(storageRoot, vol.id);
+    if (resolved === container || resolved.startsWith(`${container}/`)) return resolved;
+    const hostAbs = vol.hostPath.startsWith("/") ? vol.hostPath : `/${vol.hostPath}`;
+    if (resolved === hostAbs) return container;
+    if (resolved.startsWith(`${hostAbs}/`)) return `${container}${resolved.slice(hostAbs.length)}`;
+  }
+  return resolved;
+}
+
+export function getCachedExtraVolumes(): ExtraVolume[] {
+  return cachedVolumes ?? [];
+}
+
 function yamlScalar(value: string): string {
   if (value === "" || /[\s:#{}[\],&*?|<>=!%@`'"]/.test(value)) return JSON.stringify(value);
   return value;
@@ -95,9 +171,6 @@ export function extraVolumesComposeYaml(volumes: ExtraVolume[], storagePath: str
   }
   return `${lines.join("\n")}\n`;
 }
-
-let cachedVolumes: ExtraVolume[] | null = null;
-let volumesLoaded = false;
 
 export async function hydrateExtraVolumes(): Promise<ExtraVolume[]> {
   if (volumesLoaded && cachedVolumes) return cachedVolumes;
@@ -152,4 +225,26 @@ export function writeVolumeApplySignal(signalDir: string, yaml: string): void {
   const tmp = `${dest}.tmp`;
   fs.writeFileSync(tmp, `${new Date().toISOString()}\n`, "utf8");
   fs.renameSync(tmp, dest);
+}
+
+export function requestComposeApply(
+  volumes: ExtraVolume[],
+  storagePath: string,
+): { mode: "sidecar" | "manual"; message: string; yaml: string } {
+  const yaml = extraVolumesComposeYaml(volumes, storagePath);
+  const signalDir = resolveUpdateSignalDir();
+  if (!isSignalDirReady(signalDir)) {
+    return {
+      mode: "manual",
+      message:
+        "Sidecar fehlt. docker-compose.cloudora-volumes.yml im Installationsverzeichnis anlegen und docker compose up -d --no-build ausführen.",
+      yaml,
+    };
+  }
+  writeVolumeApplySignal(signalDir, yaml);
+  return {
+    mode: "sidecar",
+    message: "Host-Ordner werden als Volume gemountet. Der Container startet in wenigen Sekunden neu.",
+    yaml,
+  };
 }

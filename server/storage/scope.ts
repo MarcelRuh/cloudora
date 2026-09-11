@@ -14,8 +14,9 @@ import {
   isAbsolutePosixPath,
   joinConfigured,
   normalizeConfiguredPath,
-  resolveConfiguredPath,
 } from "@/server/storage/configured-path";
+import { getCachedExtraVolumes, resolveThroughExtraVolumes } from "@/server/storage/extra-volumes";
+import { detectHostRoot, isHostBrowseFsPath, toFilesystemPath } from "@/server/storage/host-fs";
 import { type StorageScope } from "@/server/storage/path-resolver";
 
 export { sharedDirName, usersDirName };
@@ -32,6 +33,11 @@ export function ensureStorageLayout(): void {
 }
 
 function mkdirWritable(absPath: string, label: string): void {
+  const host = detectHostRoot();
+  const fsPath = toFilesystemPath(absPath, host);
+  if (isHostBrowseFsPath(fsPath, host)) {
+    return;
+  }
   try {
     fs.mkdirSync(absPath, { recursive: true });
   } catch {
@@ -57,7 +63,7 @@ export function validateConfiguredHomePath(homePath: string, username: string): 
 
 export function absoluteHomePath(user: Pick<SessionUser, "username" | "homePath">): string {
   const configured = sanitizeHomeRelPath(user.homePath, user.username);
-  return resolveConfiguredPath(configured, storageRoot());
+  return resolveThroughExtraVolumes(configured, storageRoot(), getCachedExtraVolumes());
 }
 
 export function ensureUserHome(user: Pick<SessionUser, "username" | "homePath" | "homePathEnabled">): void {

@@ -3,7 +3,7 @@ import path from "node:path";
 import { AppError } from "@/lib/errors";
 import { isInsideStorageRoot, toConfiguredFromAbsolute } from "@/lib/posix-path";
 import { assertSafeFileName } from "@/server/storage/path-resolver";
-import { detectHostRoot, isBlockedSystemPath, toDisplayPath, toFilesystemPath } from "@/server/storage/host-fs";
+import { detectHostRoot, isBlockedSystemPath, isHostBrowseFsPath, isMountPoint, toDisplayPath, toFilesystemPath } from "@/server/storage/host-fs";
 
 export const MAX_LINUX_ENTRIES = 400;
 
@@ -35,6 +35,19 @@ export type LinuxInspectResult = LinuxPathStatus & {
   path: string;
   insideVolume: boolean;
   configured: string;
+  /** True when existence was checked through the read-only `/host` browse mount. */
+  hostBrowse: boolean;
+  /** Extra-volume bind exists for this host path. */
+  linked: boolean;
+  /** Bind-mount is live in this container. */
+  live: boolean;
+  volumeId: string | null;
+};
+
+export type VolumeBindHint = {
+  id: string;
+  hostPath: string;
+  containerPath: string;
 };
 
 function hostRoot() {
@@ -110,15 +123,64 @@ function resolveAgainstStorage(input: string, storageRoot: string): string {
   return normalizeBrowsePath(path.join(storageRoot, raw));
 }
 
-export function inspectLinuxPath(inputPath: string, storageRoot: string): LinuxInspectResult {
+function matchBind(display: string, fsPath: string, binds: VolumeBindHint[]): VolumeBindHint | null {
+  return (
+    binds.find(
+      (bind) =>
+        display === bind.hostPath ||
+        display.startsWith(`${bind.hostPath}/`) ||
+        fsPath === bind.containerPath ||
+        fsPath.startsWith(`${bind.containerPath}/`),
+    ) ?? null
+  );
+}
+
+export function inspectLinuxPath(
+  inputPath: string,
+  storageRoot: string,
+  binds: VolumeBindHint[] = [],
+): LinuxInspectResult {
   const display = resolveAgainstStorage(inputPath, storageRoot);
-  const status = inspectLinuxStatus(display);
-  const fsPath = toFilesystemPath(display, hostRoot());
-  return {
+  const host = hostRoot();
+  const fsPath = toFilesystemPath(display, host);
+  const hostBrowse = isHostBrowseFsPath(fsPath, host);
+  const bind = matchBind(display, fsPath, binds);
+  const base: Omit<LinuxInspectResult, keyof LinuxPathStatus> = {
     path: display,
-    ...status,
     insideVolume: isInsideStorageRoot(fsPath, storageRoot) || isInsideStorageRoot(display, storageRoot),
     configured: toConfiguredFromAbsolute(display, storageRoot, true),
+    hostBrowse,
+    linked: Boolean(bind),
+    live: false,
+    volumeId: bind?.id ?? null,
+  };
+
+  if (bind) {
+    const suffix =
+      display === bind.hostPath
+        ? ""
+        : display.startsWith(`${bind.hostPath}/`)
+          ? display.slice(bind.hostPath.length)
+          : fsPath.startsWith(`${bind.containerPath}/`)
+            ? fsPath.slice(bind.containerPath.length)
+            : "";
+    const boundFs = `${bind.containerPath}${suffix}`;
+    const live = isMountPoint(bind.containerPath);
+    const status = live ? inspectLinuxStatus(boundFs) : inspectLinuxStatus(display);
+    return {
+      ...base,
+      ...status,
+      writable: live ? status.writable : false,
+      insideVolume: live || base.insideVolume,
+      live,
+    };
+  }
+
+  const status = inspectLinuxStatus(display);
+  return {
+    ...base,
+    ...status,
+    writable: hostBrowse ? false : status.writable,
   };
 }
 

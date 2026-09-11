@@ -13,7 +13,14 @@ import { api, ApiRequestError } from "@/lib/api";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-type PathStatus = { exists: boolean; isDirectory: boolean; writable: boolean };
+type PathStatus = {
+  exists: boolean;
+  isDirectory: boolean;
+  writable: boolean;
+  hostBrowse?: boolean;
+  linked?: boolean;
+  live?: boolean;
+};
 type StorageTab = "overview" | "paths" | "volumes" | "homes";
 
 type Storage = {
@@ -54,12 +61,12 @@ export default function StoragePage() {
 
   const save = useMutation({
     mutationFn: () =>
-      api("/api/admin/storage", {
+      api<{ apply?: { mode: string; message: string } }>("/api/admin/storage", {
         method: "PATCH",
         body: JSON.stringify({ storagePath, usersDir, sharedDir }),
       }),
-    onSuccess: () => {
-      toast.success("Pfade gespeichert");
+    onSuccess: (res) => {
+      toast.success(res.apply?.message || "Pfade gespeichert");
       qc.invalidateQueries({ queryKey: ["admin-storage"] });
       qc.invalidateQueries({ queryKey: ["linux-inspect"] });
       qc.invalidateQueries({ queryKey: ["system"] });
@@ -119,7 +126,7 @@ export default function StoragePage() {
             }}
           >
             <p className="text-sm text-muted-foreground">
-              Pfade tippen oder durchsuchen. Unter dem Storage-Root wird relativ gespeichert (z. B. users), außerhalb absolut (z. B. /home). Linux / listet den Host — die Wurzel selbst nicht als Root setzen.
+              Pfade tippen oder durchsuchen. Unter dem Storage-Root wird relativ gespeichert (z. B. users), außerhalb absolut (z. B. /mnt/daten). Linux / listet den Host — /host ist nur lesen; Host-Ordner werden beim Speichern als Volume gemountet.
             </p>
             <PathPickerField
               label="Storage-Root"
@@ -145,7 +152,7 @@ export default function StoragePage() {
               storageRoot={storagePath}
               preferRelative
               placeholder="shared"
-              hint="Relativ zum Storage-Root (shared) oder absolut."
+              hint="Relativ zum Storage-Root (shared) oder absolut (/mnt/daten). Host-Pfade werden beim Speichern gelinkt."
             />
             <Button type="submit" disabled={save.isPending}>
               {save.isPending ? "…" : "Pfade speichern"}
@@ -213,6 +220,15 @@ function StatusRow({ label, value, status }: { label: string; value?: string; st
 
 function StatusLine({ status }: { status?: PathStatus }) {
   if (!status) return null;
+  if (status.linked && status.live && status.writable) {
+    return <p className="text-xs text-success">Vorhanden und beschreibbar</p>;
+  }
+  if (status.linked && !status.live) {
+    return <p className="text-xs text-warning">Volume eingetragen — Bind-Mount ausstehend.</p>;
+  }
+  if (status.hostBrowse && status.exists) {
+    return <p className="text-xs text-warning">Auf dem Host vorhanden — beim Speichern als Volume linken.</p>;
+  }
   if (!status.exists) return <p className="text-xs text-warning">Pfad existiert noch nicht — wird beim Speichern angelegt, falls berechtigt.</p>;
   if (!status.isDirectory) return <p className="text-xs text-destructive">Kein Verzeichnis</p>;
   if (!status.writable) return <p className="text-xs text-warning">Nicht beschreibbar</p>;

@@ -3,13 +3,11 @@ import { requirePermission } from "@/server/auth/require";
 import { writeAudit } from "@/server/audit";
 import { assertSameOrigin, clientIp, jsonError, jsonOk } from "@/server/http";
 import { readJson } from "@/server/http-parse";
-import { isSignalDirReady, resolveUpdateSignalDir } from "@/lib/self-update-signal";
 import {
-  extraVolumesComposeYaml,
   ensureExtraVolumeDirs,
   hydrateExtraVolumes,
+  requestComposeApply,
   saveExtraVolumes,
-  writeVolumeApplySignal,
 } from "@/server/storage/extra-volumes";
 import { hydrateStoragePaths } from "@/server/storage/config";
 
@@ -83,22 +81,4 @@ export async function POST() {
   } catch (error) {
     return jsonError(error);
   }
-}
-
-function requestComposeApply(volumes: Awaited<ReturnType<typeof hydrateExtraVolumes>>, storagePath: string) {
-  const yaml = extraVolumesComposeYaml(volumes, storagePath);
-  const signalDir = resolveUpdateSignalDir();
-  if (!isSignalDirReady(signalDir)) {
-    return {
-      mode: "manual" as const,
-      message:
-        "Sidecar fehlt. docker-compose.cloudora-volumes.yml im Installationsverzeichnis anlegen und docker compose up -d --no-build ausführen.",
-      yaml,
-    };
-  }
-  writeVolumeApplySignal(signalDir, yaml);
-  return {
-    mode: "sidecar" as const,
-    message: "Volumes werden übernommen. Der Container startet in wenigen Sekunden neu.",
-  };
 }

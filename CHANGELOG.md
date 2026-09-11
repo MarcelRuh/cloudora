@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2 – 2026-09-11
+
+- Host-Ordner in Standard-Pfaden (z. B. `/mnt/clustern`) werden beim Speichern als schreibbares Volume gelinkt
+- Path-Status unterscheidet Host-Browse (`/host`, nur lesen) von gemounteten Volumes
+- Shared/Users außerhalb des Docker-Volumes laufen über `/storage/volumes/…`, nicht über das Read-only-`/host`
+
 ## 1.2.1 – 2026-09-11
 
 - Mehrere Host-Ordner als Extra-Volumes linken (Administration → Speicher → Volumes)

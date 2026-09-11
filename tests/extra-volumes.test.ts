@@ -5,13 +5,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import { AppError } from "@/lib/errors";
 import { browseLinuxDirectories } from "@/server/storage/browse-linux";
 import {
+  AUTO_SHARED_VOLUME_ID,
+  configuredPathNeedsHostBind,
   extraVolumeContainerPath,
   extraVolumesComposeYaml,
+  extraVolumesFingerprint,
   normalizeExtraVolume,
   parseExtraVolumes,
+  resolveThroughExtraVolumes,
   slugifyVolumeId,
+  syncAutoExtraVolumes,
 } from "@/server/storage/extra-volumes";
-import { detectHostRoot, toDisplayPath, toFilesystemPath } from "@/server/storage/host-fs";
+import { detectHostRoot, isHostBrowseFsPath, toDisplayPath, toFilesystemPath } from "@/server/storage/host-fs";
 
 describe("host fs mapping", () => {
   const dirs: string[] = [];
@@ -31,6 +36,8 @@ describe("host fs mapping", () => {
     expect(toFilesystemPath("/mnt/hdd", host)).toBe(path.join(path.resolve(host), "mnt/hdd"));
     expect(toDisplayPath(path.join(host, "mnt/hdd"), host)).toBe("/mnt/hdd");
     expect(toFilesystemPath("/storage/users", host)).toBe(path.resolve("/storage/users"));
+    expect(isHostBrowseFsPath(path.join(host, "mnt/hdd"), host)).toBe(true);
+    expect(isHostBrowseFsPath("/storage/users", host)).toBe(false);
   });
 
   it("lists host root as / including mnt", () => {
@@ -57,6 +64,30 @@ describe("extra volumes", () => {
     });
     expect(() => normalizeExtraVolume({ id: "root", name: "root", hostPath: "/" })).toThrow(AppError);
     expect(() => normalizeExtraVolume({ id: "users", name: "users", hostPath: "/mnt/x" })).toThrow(AppError);
+  });
+
+  it("maps host paths through extra volumes and syncs auto binds", () => {
+    expect(configuredPathNeedsHostBind("/mnt/clustern", "/storage")).toBe(true);
+    expect(configuredPathNeedsHostBind("shared", "/storage")).toBe(false);
+    expect(configuredPathNeedsHostBind("/storage/shared", "/storage")).toBe(false);
+    const volumes = syncAutoExtraVolumes([], "/storage", "users", "/mnt/clustern");
+    expect(volumes).toEqual([
+      { id: AUTO_SHARED_VOLUME_ID, name: "Shared-Ordner", hostPath: "/mnt/clustern" },
+    ]);
+    expect(resolveThroughExtraVolumes("/mnt/clustern", "/storage", volumes)).toBe("/storage/volumes/shared-host");
+    expect(resolveThroughExtraVolumes("/mnt/clustern/docs", "/storage", volumes)).toBe(
+      "/storage/volumes/shared-host/docs",
+    );
+    expect(resolveThroughExtraVolumes("users", "/storage", volumes)).toBe(path.resolve("/storage/users"));
+    const reused = syncAutoExtraVolumes(
+      [{ id: "hdd", name: "HDD", hostPath: "/mnt/clustern" }],
+      "/storage",
+      "users",
+      "/mnt/clustern",
+    );
+    expect(reused).toHaveLength(1);
+    expect(reused[0]?.id).toBe("hdd");
+    expect(extraVolumesFingerprint(volumes)).not.toBe(extraVolumesFingerprint([]));
   });
 
   it("parses and renders compose yaml without wiping service volumes when empty", () => {

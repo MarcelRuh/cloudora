@@ -48,6 +48,30 @@ describe("linux folder browse", () => {
     expect(missing.insideVolume).toBe(true);
   });
 
+  it("treats host-browse paths as not writable until a live bind exists", () => {
+    const host = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-hostinspect-"));
+    fs.mkdirSync(path.join(host, "mnt"));
+    fs.mkdirSync(path.join(host, "mnt", "clustern"));
+    process.env.CLOUDORA_HOST_ROOT = host;
+    try {
+      const inspected = inspectLinuxPath("/mnt/clustern", "/storage");
+      expect(inspected.exists).toBe(true);
+      expect(inspected.isDirectory).toBe(true);
+      expect(inspected.hostBrowse).toBe(true);
+      expect(inspected.writable).toBe(false);
+      expect(inspected.linked).toBe(false);
+      expect(inspected.live).toBe(false);
+      const bound = inspectLinuxPath("/mnt/clustern", "/storage", [
+        { id: "shared-host", hostPath: "/mnt/clustern", containerPath: path.join(host, "mnt", "clustern") },
+      ]);
+      expect(bound.linked).toBe(true);
+      expect(bound.writable).toBe(false);
+    } finally {
+      delete process.env.CLOUDORA_HOST_ROOT;
+      fs.rmSync(host, { recursive: true, force: true });
+    }
+  });
+
   it("creates a folder next to the browse target", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-mkdir-"));
     const created = mkdirLinuxDirectory(root, "neu");

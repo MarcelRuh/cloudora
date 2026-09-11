@@ -31,6 +31,10 @@ type Inspect = {
   insideVolume: boolean;
   configured: string;
   hostStorage?: string;
+  hostBrowse?: boolean;
+  linked?: boolean;
+  live?: boolean;
+  volumeId?: string | null;
 };
 
 type LocationTab = "linux" | "home" | "mounts" | "media" | "storage";
@@ -109,32 +113,78 @@ export function PathLiveStatus({ value }: { value: string }) {
     return <p className="text-xs text-muted-foreground">{isFetching ? "Prüfe Pfad…" : null}</p>;
   }
 
-  const status = !data.exists
-    ? "Existiert noch nicht — wird beim Speichern angelegt, falls berechtigt."
-    : !data.isDirectory
-      ? "Kein Verzeichnis"
-      : !data.writable
-        ? "Nicht beschreibbar"
-        : "Vorhanden und beschreibbar";
-  const statusClass = !data.exists
-    ? "text-warning"
-    : !data.isDirectory
-      ? "text-destructive"
-      : !data.writable
-        ? "text-warning"
-        : "text-success";
+  const status = liveStatusText(data);
+  const statusClass = liveStatusClass(data);
 
   return (
     <div className="space-y-0.5 text-xs">
       <p className={statusClass}>{status}</p>
-      <MountHint inside={data.insideVolume} hostStorage={data.hostStorage} />
+      <MountHint
+        inside={data.insideVolume}
+        hostStorage={data.hostStorage}
+        hostBrowse={data.hostBrowse}
+        linked={data.linked}
+        live={data.live}
+      />
     </div>
   );
 }
 
-export function MountHint({ inside, hostStorage }: { inside: boolean; hostStorage?: string }) {
-  if (inside) {
+function liveStatusText(data: Inspect): string {
+  if (data.linked && data.live && data.writable) return "Vorhanden und beschreibbar";
+  if (data.linked && data.live && data.exists && !data.writable) return "Gemountet, aber nicht beschreibbar — Rechte auf dem Host prüfen.";
+  if (data.linked && !data.live) {
+    return data.exists
+      ? "Als Volume eingetragen — nach dem Übernehmen (Container-Neustart) schreibbar."
+      : "Als Volume eingetragen — Docker legt den Ordner auf dem Host beim Mounten an.";
+  }
+  if (data.hostBrowse && data.exists && data.isDirectory) {
+    return "Auf dem Host vorhanden. Speichern mountet den Ordner schreibbar (nicht über /host).";
+  }
+  if (data.hostBrowse && !data.exists) {
+    return "Existiert auf dem Host noch nicht — Docker legt den Ordner beim Speichern an.";
+  }
+  if (!data.exists) return "Existiert noch nicht — wird beim Speichern angelegt, falls berechtigt.";
+  if (!data.isDirectory) return "Kein Verzeichnis";
+  if (!data.writable) return "Nicht beschreibbar";
+  return "Vorhanden und beschreibbar";
+}
+
+function liveStatusClass(data: Inspect): string {
+  if (data.linked && data.live && data.writable) return "text-success";
+  if (!data.exists && !data.hostBrowse && !data.linked) return "text-warning";
+  if (data.exists && !data.isDirectory) return "text-destructive";
+  if (data.linked && data.live && !data.writable) return "text-warning";
+  if (data.hostBrowse || (data.linked && !data.live)) return "text-warning";
+  if (!data.writable) return "text-warning";
+  return "text-success";
+}
+
+export function MountHint({
+  inside,
+  hostStorage,
+  hostBrowse,
+  linked,
+  live,
+}: {
+  inside: boolean;
+  hostStorage?: string;
+  hostBrowse?: boolean;
+  linked?: boolean;
+  live?: boolean;
+}) {
+  if (inside || (linked && live)) {
     return <p className="text-xs text-success">Im Docker-Volume{hostStorage ? ` (${hostStorage})` : ""}</p>;
+  }
+  if (linked && !live) {
+    return <p className="text-xs text-warning">Bind-Mount ausstehend — Speichern bzw. Volumes übernehmen startet den Container neu.</p>;
+  }
+  if (hostBrowse) {
+    return (
+      <p className="text-xs text-warning">
+        Host-Pfad (über /host nur lesbar). Speichern linkt ihn als schreibbares Volume.
+      </p>
+    );
   }
   return (
     <p className="text-xs text-warning">

@@ -5,9 +5,11 @@ import { logger } from "@/server/logger";
 import { hashPassword } from "@/server/auth/password";
 import { ensureStorageLayout, sanitizeHomeRelPath, defaultHomePath } from "@/server/storage/scope";
 import { hydrateStoragePaths } from "@/server/storage/config";
+import { hydrateExtraVolumes } from "@/server/storage/extra-volumes";
 
 export async function bootstrapCloudora(): Promise<void> {
   await hydrateStoragePaths();
+  await hydrateExtraVolumes();
   ensureStorageLayout();
   const env = getEnv();
 

@@ -54,3 +54,26 @@ export function toDisplayPath(fsPath: string, hostRoot: string | null = detectHo
   }
   return abs;
 }
+
+/** True when the process path is the read-only host browse mount (`/host/...`). */
+export function isHostBrowseFsPath(fsPath: string, hostRoot: string | null = detectHostRoot()): boolean {
+  if (!hostRoot) return false;
+  const abs = path.resolve(fsPath);
+  return abs === hostRoot || abs.startsWith(`${hostRoot}/`);
+}
+
+/** Whether this absolute path is a live mount point in the current mount namespace. */
+export function isMountPoint(absPath: string): boolean {
+  const target = path.resolve(absPath);
+  try {
+    const text = fs.readFileSync("/proc/self/mountinfo", "utf8");
+    for (const line of text.split("\n")) {
+      if (!line) continue;
+      const fields = line.split(" ");
+      if (fields[4] === target) return true;
+    }
+  } catch {
+    /* no /proc */
+  }
+  return false;
+}

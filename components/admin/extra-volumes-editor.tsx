@@ -31,7 +31,7 @@ export function ExtraVolumesEditor({
   const qc = useQueryClient();
   const [rows, setRows] = useState<ExtraVolume[]>(volumes);
   const [name, setName] = useState("");
-  const [hostPath, setHostPath] = useState("/");
+  const [hostPath, setHostPath] = useState("/mnt");
 
   useEffect(() => setRows(volumes), [volumes]);
 
@@ -66,7 +66,7 @@ export function ExtraVolumesEditor({
     }
     setRows((current) => [...current, { id, name: name.trim() || id, hostPath: hostPath.trim() }]);
     setName("");
-    setHostPath("/");
+    setHostPath("/mnt");
   }
 
   return (
@@ -74,7 +74,7 @@ export function ExtraVolumesEditor({
       <div>
         <p className="cloudora-section">Zusätzliche Speicher</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Host-Ordner aus Linux / wählen und linken. Nach dem Übernehmen liegen sie im Explorer unter{" "}
+          Host-Ordner aus Linux / wählen und linken. `/host` ist nur zum Durchsuchen (lesen). Nach dem Übernehmen liegen die Ordner schreibbar im Explorer unter{" "}
           <span className="font-mono">/volumes/…</span>. `.env` und der Storage-Root bleiben.
         </p>
       </div>
