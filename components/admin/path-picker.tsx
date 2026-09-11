@@ -221,7 +221,7 @@ function LinuxFolderBrowser({
 
   const start = useMemo(() => {
     const raw = initialPath.trim();
-    if (raw === "/" || raw === "") return storageRoot.startsWith("/") ? storageRoot : "/";
+    if (raw === "/" || raw === "") return "/";
     if (raw.startsWith("/")) return raw;
     return joinUnderRoot(storageRoot, raw);
   }, [initialPath, storageRoot]);
@@ -560,7 +560,9 @@ function LinuxFolderBrowser({
               <span className="truncate">{current}</span>
             </p>
             {atRoot ? (
-              <p className="text-[11px] text-warning">Die Wurzel / kann nicht als Speicherpfad gesetzt werden.</p>
+              <p className="text-[11px] text-muted-foreground">
+                Inhalt von / — wähle einen Unterordner (z. B. /mnt oder /home). Die Wurzel selbst kann nicht gelinkt werden.
+              </p>
             ) : (
               <MountHint inside={insideVolume} hostStorage={data?.hostStorage ?? hostStorage} />
             )}

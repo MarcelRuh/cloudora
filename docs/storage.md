@@ -22,6 +22,12 @@ services:
 
 Then set Storage-Root or a user Home-Pfad to `/home`.
 
+## Extra volumes
+
+Admins link additional host directories in **Administration → Speicher → Volumes**. Cloudora writes `docker-compose.cloudora-volumes.yml` and the sidecar runs `docker compose up -d --no-build`. Linked folders appear in the explorer under `/volumes/{name}`.
+
+The path picker tab **Linux /** lists the **host** root via a read-only bind `/:/host`. You can pick `/mnt/hdd`, `/home`, … — not `/` itself.
+
 ## User homes
 
 `homePath` may be:

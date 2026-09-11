@@ -3,9 +3,9 @@ import path from "node:path";
 import { AppError } from "@/lib/errors";
 import { isInsideStorageRoot, toConfiguredFromAbsolute } from "@/lib/posix-path";
 import { assertSafeFileName } from "@/server/storage/path-resolver";
+import { detectHostRoot, isBlockedSystemPath, toDisplayPath, toFilesystemPath } from "@/server/storage/host-fs";
 
 export const MAX_LINUX_ENTRIES = 400;
-const BLOCKED = ["/proc", "/sys", "/dev", "/run"];
 
 export const LINUX_SHORTCUTS = ["/", "/home", "/mnt", "/media", "/storage", "/opt", "/var", "/data"];
 
@@ -37,9 +37,13 @@ export type LinuxInspectResult = LinuxPathStatus & {
   configured: string;
 };
 
+function hostRoot() {
+  return detectHostRoot();
+}
+
 function isBlocked(absPath: string): boolean {
-  const normalized = path.resolve(absPath);
-  return BLOCKED.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`));
+  const host = hostRoot();
+  return isBlockedSystemPath(absPath, host) || isBlockedSystemPath(toFilesystemPath(absPath, host), host);
 }
 
 function isWritableDir(absPath: string): boolean {
@@ -51,29 +55,30 @@ function isWritableDir(absPath: string): boolean {
   }
 }
 
-function safeStatDir(absPath: string): { path: string; readable: boolean } | null {
+function safeStatDir(fsPath: string): { fsPath: string; readable: boolean } | null {
   try {
-    const st = fs.statSync(absPath);
+    const st = fs.statSync(fsPath);
     if (!st.isDirectory()) return null;
     let readable = true;
     try {
-      fs.accessSync(absPath, fs.constants.R_OK | fs.constants.X_OK);
+      fs.accessSync(fsPath, fs.constants.R_OK | fs.constants.X_OK);
     } catch {
       readable = false;
     }
-    return { path: path.resolve(absPath), readable };
+    return { fsPath: path.resolve(fsPath), readable };
   } catch {
     return null;
   }
 }
 
-export function inspectLinuxStatus(absPath: string): LinuxPathStatus {
+export function inspectLinuxStatus(displayOrFs: string): LinuxPathStatus {
+  const fsPath = toFilesystemPath(displayOrFs, hostRoot());
   try {
-    const st = fs.statSync(absPath);
+    const st = fs.statSync(fsPath);
     return {
       exists: true,
       isDirectory: st.isDirectory(),
-      writable: st.isDirectory() ? isWritableDir(absPath) : false,
+      writable: st.isDirectory() ? isWritableDir(fsPath) : false,
     };
   } catch {
     return { exists: false, isDirectory: false, writable: false };
@@ -89,50 +94,55 @@ export function normalizeBrowsePath(input: string): string {
   if (parts.some((part) => part === "..")) {
     throw new AppError("PATH_TRAVERSAL", "Path-Traversal ist nicht erlaubt.", 400);
   }
-  const abs = path.resolve(raw.startsWith("/") ? raw : `/${raw}`);
-  if (isBlocked(abs)) {
+  const host = hostRoot();
+  const display = toDisplayPath(path.resolve(raw.startsWith("/") ? raw : `/${raw}`), host);
+  const fsPath = toFilesystemPath(display, host);
+  if (isBlockedSystemPath(display, host) || isBlockedSystemPath(fsPath, host)) {
     throw new AppError("FORBIDDEN", "Dieser Systempfad kann nicht durchsucht werden.", 403);
   }
-  return abs;
+  return display;
 }
 
 function resolveAgainstStorage(input: string, storageRoot: string): string {
   const raw = input.replace(/\\/g, "/").trim();
-  if (!raw) return path.resolve(storageRoot);
+  if (!raw) return toDisplayPath(path.resolve(storageRoot), hostRoot());
   if (raw.startsWith("/")) return normalizeBrowsePath(raw);
   return normalizeBrowsePath(path.join(storageRoot, raw));
 }
 
 export function inspectLinuxPath(inputPath: string, storageRoot: string): LinuxInspectResult {
-  const abs = resolveAgainstStorage(inputPath, storageRoot);
-  const status = inspectLinuxStatus(abs);
+  const display = resolveAgainstStorage(inputPath, storageRoot);
+  const status = inspectLinuxStatus(display);
+  const fsPath = toFilesystemPath(display, hostRoot());
   return {
-    path: abs,
+    path: display,
     ...status,
-    insideVolume: isInsideStorageRoot(abs, storageRoot),
-    configured: toConfiguredFromAbsolute(abs, storageRoot, true),
+    insideVolume: isInsideStorageRoot(fsPath, storageRoot) || isInsideStorageRoot(display, storageRoot),
+    configured: toConfiguredFromAbsolute(display, storageRoot, true),
   };
 }
 
 export function mkdirLinuxDirectory(parentInput: string, name: string): string {
-  const parent = normalizeBrowsePath(parentInput);
-  if (parent === "/") {
+  const parentDisplay = normalizeBrowsePath(parentInput);
+  if (parentDisplay === "/") {
     throw new AppError("FORBIDDEN", "Unter / kann kein Ordner angelegt werden.", 403);
   }
+  const parentFs = toFilesystemPath(parentDisplay, hostRoot());
   const safe = assertSafeFileName(name);
-  const target = path.join(parent, safe);
-  if (isBlocked(target) || isBlocked(parent)) {
+  const targetFs = path.join(parentFs, safe);
+  const targetDisplay = toDisplayPath(targetFs, hostRoot());
+  if (isBlocked(targetDisplay) || isBlocked(parentDisplay)) {
     throw new AppError("FORBIDDEN", "Dieser Systempfad kann nicht verändert werden.", 403);
   }
-  const self = safeStatDir(parent);
+  const self = safeStatDir(parentFs);
   if (!self?.readable) {
     throw new AppError("NOT_FOUND", "Elternordner nicht gefunden.", 404);
   }
-  if (!isWritableDir(parent)) {
+  if (!isWritableDir(parentFs)) {
     throw new AppError("FORBIDDEN", "Keine Berechtigung, in diesem Verzeichnis zu schreiben.", 403);
   }
   try {
-    fs.mkdirSync(target, { recursive: false });
+    fs.mkdirSync(targetFs, { recursive: false });
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
     if (code === "EEXIST") {
@@ -140,30 +150,35 @@ export function mkdirLinuxDirectory(parentInput: string, name: string): string {
     }
     throw new AppError("FORBIDDEN", "Ordner konnte nicht angelegt werden.", 403);
   }
-  return path.resolve(target);
+  return targetDisplay;
 }
 
 export function browseLinuxDirectories(inputPath: string, extraShortcuts: string[] = [], storageRoot = ""): LinuxBrowseResult {
-  let current = normalizeBrowsePath(inputPath);
-  const self = safeStatDir(current);
+  const host = hostRoot();
+  let display = normalizeBrowsePath(inputPath);
+  let fsPath = toFilesystemPath(display, host);
+  const self = safeStatDir(fsPath);
   if (!self) {
-    current = path.dirname(current);
-    if (isBlocked(current)) {
+    display = display === "/" ? "/" : path.dirname(display);
+    fsPath = toFilesystemPath(display, host);
+    if (isBlocked(display)) {
       throw new AppError("NOT_FOUND", "Verzeichnis nicht gefunden.", 404);
     }
   } else {
-    current = self.path;
+    fsPath = self.fsPath;
+    display = toDisplayPath(fsPath, host);
   }
 
-  let real = current;
+  let real = fsPath;
   try {
-    real = fs.realpathSync.native(current);
+    real = fs.realpathSync.native(fsPath);
   } catch {
-    real = current;
+    real = fsPath;
   }
-  if (isBlocked(real)) {
+  if (isBlockedSystemPath(real, host) || isBlocked(toDisplayPath(real, host))) {
     throw new AppError("FORBIDDEN", "Dieser Systempfad kann nicht durchsucht werden.", 403);
   }
+  display = toDisplayPath(real, host);
 
   const entries: LinuxDirEntry[] = [];
   let truncated = false;
@@ -175,12 +190,13 @@ export function browseLinuxDirectories(inputPath: string, extraShortcuts: string
         break;
       }
       if (!dirent.name || dirent.name.startsWith(".")) continue;
-      const child = path.join(real, dirent.name);
-      if (isBlocked(child)) continue;
+      const childFs = path.join(real, dirent.name);
+      const childDisplay = toDisplayPath(childFs, host);
+      if (isBlocked(childDisplay) || isBlockedSystemPath(childFs, host)) continue;
       if (!dirent.isDirectory() && !dirent.isSymbolicLink()) continue;
-      const info = safeStatDir(child);
+      const info = safeStatDir(childFs);
       if (!info) continue;
-      entries.push({ name: dirent.name, path: info.path, readable: info.readable });
+      entries.push({ name: dirent.name, path: toDisplayPath(info.fsPath, host), readable: info.readable });
     }
   } catch {
     throw new AppError("FORBIDDEN", "Keine Berechtigung, dieses Verzeichnis zu lesen.", 403);
@@ -192,18 +208,30 @@ export function browseLinuxDirectories(inputPath: string, extraShortcuts: string
   const seen = new Set<string>();
   const shortcuts: LinuxDirEntry[] = [];
   for (const shortcut of shortcutPaths) {
-    const info = safeStatDir(shortcut);
-    if (!info || seen.has(info.path)) continue;
-    seen.add(info.path);
-    shortcuts.push({ name: shortcut.startsWith("/") ? shortcut : info.path, path: info.path, readable: info.readable });
+    let displayShortcut = shortcut;
+    try {
+      displayShortcut = normalizeBrowsePath(shortcut);
+    } catch {
+      continue;
+    }
+    const info = safeStatDir(toFilesystemPath(displayShortcut, host));
+    if (!info || seen.has(displayShortcut)) continue;
+    seen.add(displayShortcut);
+    shortcuts.push({
+      name: displayShortcut,
+      path: displayShortcut,
+      readable: info.readable,
+    });
   }
 
   return {
-    path: real,
-    parent: real === "/" ? null : path.dirname(real),
+    path: display,
+    parent: display === "/" ? null : path.posix.dirname(display) || "/",
     writable: isWritableDir(real),
     truncated,
-    insideVolume: storageRoot ? isInsideStorageRoot(real, storageRoot) : false,
+    insideVolume: storageRoot
+      ? isInsideStorageRoot(real, storageRoot) || isInsideStorageRoot(display, storageRoot)
+      : false,
     entries,
     shortcuts,
   };

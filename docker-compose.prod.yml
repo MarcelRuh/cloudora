@@ -33,11 +33,13 @@ services:
       CLOUDORA_REPO: ${CLOUDORA_REPO:-MarcelRuh/cloudora}
       CLOUDORA_BRANCH: ${CLOUDORA_BRANCH:-main}
       CLOUDORA_UPDATE_SIGNAL_DIR: /update-signal
+      CLOUDORA_HOST_ROOT: /host
       PORT: "3000"
       NODE_ENV: production
       TRUST_PROXY: "true"
     volumes:
       - ${CLOUDORA_HOST_STORAGE:-./storage}:${CLOUDORA_STORAGE_PATH:-/storage}
+      - /:/host:ro,rslave
       - cloudora_update_signal:/update-signal
     depends_on:
       postgres:

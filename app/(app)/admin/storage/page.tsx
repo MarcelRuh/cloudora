@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ExtraVolumesEditor, type ExtraVolume } from "@/components/admin/extra-volumes-editor";
 import { PathPickerField } from "@/components/admin/path-picker";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,7 +14,7 @@ import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type PathStatus = { exists: boolean; isDirectory: boolean; writable: boolean };
-type StorageTab = "overview" | "paths" | "homes";
+type StorageTab = "overview" | "paths" | "volumes" | "homes";
 
 type Storage = {
   usedBytes: number;
@@ -21,6 +22,7 @@ type Storage = {
   hostStorage: string;
   usersDir: string;
   sharedDir: string;
+  extraVolumes: ExtraVolume[];
   storageStatus: PathStatus;
   usersDirStatus: PathStatus;
   sharedDirStatus: PathStatus;
@@ -71,7 +73,7 @@ export default function StoragePage() {
         <p className="cloudora-section">Administration</p>
         <h1 className="cloudora-title mt-1 text-3xl md:text-4xl">Speicher</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Standard-Pfade (Storage-Root, Benutzer, Shared) und Home-Pfade der Benutzer. In Docker muss der gewählte Ordner als Volume im Container liegen.
+          Standard-Pfade, zusätzliche Host-Volumes und Home-Pfade. In Docker listet Linux / den Host (`/host`). Extra-Volumes erscheinen nach dem Übernehmen unter /volumes.
         </p>
       </div>
 
@@ -81,6 +83,7 @@ export default function StoragePage() {
         tabs={[
           { id: "overview", label: "Übersicht" },
           { id: "paths", label: "Standard-Pfade" },
+          { id: "volumes", label: "Volumes" },
           { id: "homes", label: "Benutzer-Homes" },
         ]}
       />
@@ -99,6 +102,9 @@ export default function StoragePage() {
             <StatusRow label="Storage-Root" value={data?.storagePath} status={data?.storageStatus} />
             <StatusRow label="Benutzer-Ordner" value={data?.usersDir} status={data?.usersDirStatus} />
             <StatusRow label="Shared-Ordner" value={data?.sharedDir} status={data?.sharedDirStatus} />
+            <p className="pt-2 text-xs text-muted-foreground">
+              Extra-Volumes: {data?.extraVolumes?.length ?? 0}
+            </p>
           </Card>
         </div>
       ) : null}
@@ -113,7 +119,7 @@ export default function StoragePage() {
             }}
           >
             <p className="text-sm text-muted-foreground">
-              Pfade tippen oder durchsuchen. Unter dem Storage-Root wird relativ gespeichert (z. B. users), außerhalb absolut (z. B. /home). Die Wurzel / ist nicht erlaubt.
+              Pfade tippen oder durchsuchen. Unter dem Storage-Root wird relativ gespeichert (z. B. users), außerhalb absolut (z. B. /home). Linux / listet den Host — die Wurzel selbst nicht als Root setzen.
             </p>
             <PathPickerField
               label="Storage-Root"
@@ -146,6 +152,10 @@ export default function StoragePage() {
             </Button>
           </form>
         </Card>
+      ) : null}
+
+      {tab === "volumes" ? (
+        <ExtraVolumesEditor volumes={data?.extraVolumes ?? []} storagePath={data?.storagePath || "/storage"} />
       ) : null}
 
       {tab === "homes" ? (

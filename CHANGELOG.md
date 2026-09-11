@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1 – 2026-09-11
+
+- Mehrere Host-Ordner als Extra-Volumes linken (Administration → Speicher → Volumes)
+- Path-Picker listet Linux `/` (Host-Wurzel über `/host`); Unterordner wählbar
+- Sidecar übernimmt Bind-Mounts ohne Image-Rebuild
+
 ## 1.2.0 – 2026-09-11
 
 - Self-Update in der UI (Administration → System): GitHub-Release holen, Stack neu bauen, Fortschritt

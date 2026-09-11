@@ -1,15 +1,11 @@
-# Extra Host-Mounts unter den Storage-Root.
-# Diese Datei nach docker-compose.override.yml kopieren und volumes eintragen:
+# Extra Host-Mounts (manuell). UI-Volumes liegen in docker-compose.cloudora-volumes.yml.
 #
 # services:
 #   cloudora:
 #     volumes:
-#       - /mnt/hdd/cloudora:/storage
-#       - /mnt/nas/cloudora:/storage
-#       - /mnt/usb/photos:/storage/shared/photos
+#       - /mnt/nas/photos:/storage/volumes/photos
 #       - /home:/home
 #
-# Home-Pfade in der Admin-UI z. B. /home oder /home/anna.
-# Danach: docker compose up -d
+# Danach: docker compose up -d --no-build
 
 services: {}

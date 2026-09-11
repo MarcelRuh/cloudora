@@ -28,6 +28,7 @@ export function ensureStorageLayout(): void {
   mkdirWritable(storageRoot(), "Storage-Root");
   mkdirWritable(resolveUsersDirAbs(), "Benutzer-Ordner");
   mkdirWritable(resolveSharedDirAbs(), "Shared-Ordner");
+  mkdirWritable(path.join(storageRoot(), "volumes"), "Volumes");
 }
 
 function mkdirWritable(absPath: string, label: string): void {

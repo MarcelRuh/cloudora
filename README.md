@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> Status: **v1.2.0** – Self-Hosted Cloud Storage mit Papierkorb, 2FA, Backup und Self-Update.
+> Status: **v1.2.1** – Self-Hosted Cloud Storage mit Papierkorb, 2FA, Backup, Self-Update und Extra-Volumes.
 
 Cloudora ist der zentrale Datei- und Cloud-Speicher der gleichen Software-Familie wie [Proxora](https://github.com/MarcelRuh/proxora): dunkles, technisches UI, klare Administration, Self-Hosting hinter Nginx Proxy Manager.
 
@@ -166,7 +166,9 @@ Danach Container neu erzeugen, damit der Bind-Mount greift:
 docker compose up -d
 ```
 
-Zusätzliche Datenträger als Unterordner: `docker-compose.override.example.yml` nach `docker-compose.override.yml` kopieren.
+Zusätzliche Datenträger in der UI: **Administration → Speicher → Volumes**. Host-Ordner aus Linux `/` wählen und übernehmen. Die Bind-Mounts schreibt Cloudora nach `docker-compose.cloudora-volumes.yml`.
+
+Manuell weiterhin: `docker-compose.override.example.yml` nach `docker-compose.override.yml` kopieren.
 
 Pfade sind in der UI änderbar: **Administration → Speicher** (Storage-Root, Benutzer-/Shared-Ordner) und **Benutzer → Home-Pfad**.
 

@@ -43,6 +43,7 @@ next-env.d.ts
 /.cloudora-update-progress
 /.cloudora-update-compose.log
 /.cloudora-update.lock
+/docker-compose.cloudora-volumes.yml
 
 # prisma
 prisma/*.db

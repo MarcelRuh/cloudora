@@ -235,7 +235,8 @@ sync_via_git() {
     -e .cloudora-revision \
     -e .cloudora-update-progress \
     -e .cloudora-update-compose.log \
-    -e .cloudora-update.lock
+    -e .cloudora-update.lock \
+    -e docker-compose.cloudora-volumes.yml
   echo " git reset to $REMOTE ($RELEASE_TAG)"
 }
 
@@ -254,6 +255,7 @@ sync_via_tarball() {
     --exclude='./.git' \
     --exclude='./node_modules' \
     --exclude='./.next' \
+    --exclude='./docker-compose.cloudora-volumes.yml' \
     . | (cd "$INSTALL_DIR" && tar xf -)
 }
 

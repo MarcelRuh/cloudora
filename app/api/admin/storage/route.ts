@@ -13,6 +13,7 @@ import {
 import { resolveConfiguredPath } from "@/server/storage/configured-path";
 import { getEnv } from "@/server/env";
 import { prisma } from "@/server/db";
+import { hydrateExtraVolumes } from "@/server/storage/extra-volumes";
 
 export async function GET() {
   try {
@@ -33,11 +34,13 @@ export async function GET() {
       },
       orderBy: { username: "asc" },
     });
+    const extras = await hydrateExtraVolumes();
     return jsonOk({
       storagePath: paths.storagePath,
       hostStorage: env.hostStorage,
       usersDir: paths.usersDir,
       sharedDir: paths.sharedDir,
+      extraVolumes: extras,
       storageStatus: inspectPath(paths.storagePath),
       usersDirStatus: inspectPath(resolveConfiguredPath(paths.usersDir, paths.storagePath)),
       sharedDirStatus: inspectPath(resolveConfiguredPath(paths.sharedDir, paths.storagePath)),

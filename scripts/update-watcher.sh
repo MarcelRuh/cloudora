@@ -12,6 +12,8 @@ UPDATER_IMAGE="${CLOUDORA_UPDATER_IMAGE:-docker:27.5.1-cli}"
 SIGNAL_VOLUME="${CLOUDORA_SIGNAL_VOLUME:-cloudora_update_signal}"
 APPLY="${INSTALL_DIR}/scripts/self-update-apply.sh"
 REQUEST="${SIGNAL_DIR}/request"
+COMPOSE_UP="${SIGNAL_DIR}/compose-up"
+VOLUMES_SPEC="${SIGNAL_DIR}/extra-volumes.yml"
 LOCK="${SIGNAL_DIR}/.cloudora-update.lock"
 
 if ! echo "$REPO" | grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'; then
@@ -67,9 +69,44 @@ start_updater() {
     "$UPDATER_IMAGE" sh "$APPLY"
 }
 
+compose_files() {
+  if [ -f "${INSTALL_DIR}/docker-compose.prod.yml" ]; then
+    printf '%s' "-f docker-compose.prod.yml"
+  else
+    printf '%s' "-f docker-compose.yml"
+  fi
+  if [ -f "${INSTALL_DIR}/docker-compose.override.yml" ]; then
+    printf ' %s' "-f docker-compose.override.yml"
+  fi
+  if [ -f "${INSTALL_DIR}/docker-compose.cloudora-volumes.yml" ]; then
+    printf ' %s' "-f docker-compose.cloudora-volumes.yml"
+  fi
+}
+
+apply_extra_volumes() {
+  if [ -f "$VOLUMES_SPEC" ]; then
+    cp "$VOLUMES_SPEC" "${INSTALL_DIR}/docker-compose.cloudora-volumes.yml"
+  fi
+  echo "==> Applying extra storage volumes"
+  cd "$INSTALL_DIR"
+  if [ -S /var/run/docker.sock ]; then
+    unset DOCKER_HOST
+  fi
+  # shellcheck disable=SC2046
+  docker compose $(compose_files) up -d --no-build --remove-orphans
+}
+
 sync_lock
 
 while true; do
+  if [ -f "$COMPOSE_UP" ]; then
+    rm -f "$COMPOSE_UP"
+    if updater_running; then
+      echo "==> Skip compose-up, updater running"
+    else
+      apply_extra_volumes || echo "==> compose-up failed" >&2
+    fi
+  fi
   if [ -f "$REQUEST" ]; then
     rm -f "$REQUEST"
     if updater_running; then
