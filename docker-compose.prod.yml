@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cloudora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cloudora}
+      POSTGRES_DB: ${POSTGRES_DB:-cloudora}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cloudora} -d ${POSTGRES_DB:-cloudora}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  cloudora:
+    build: .
+    image: cloudora:latest
+    container_name: cloudora
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cloudora}:${POSTGRES_PASSWORD:-cloudora}@postgres:5432/${POSTGRES_DB:-cloudora}?schema=public
+      CLOUDORA_STORAGE_PATH: ${CLOUDORA_STORAGE_PATH:-/storage}
+      CLOUDORA_HOST_STORAGE: ${CLOUDORA_HOST_STORAGE:-./storage}
+      CLOUDORA_USERS_DIR: ${CLOUDORA_USERS_DIR:-users}
+      CLOUDORA_SHARED_DIR: ${CLOUDORA_SHARED_DIR:-shared}
+      PORT: "3000"
+      NODE_ENV: production
+      TRUST_PROXY: "true"
+    volumes:
+      - ${CLOUDORA_HOST_STORAGE:-./storage}:${CLOUDORA_STORAGE_PATH:-/storage}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

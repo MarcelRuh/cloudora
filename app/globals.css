@@ -1,0 +1,318 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+:root,
+.dark,
+[data-ui="standard"] {
+  color-scheme: dark;
+  --background: #0a0a0f;
+  --foreground: #ffffff;
+  --card: #0d0d15;
+  --card-foreground: #ffffff;
+  --muted: #141422;
+  --muted-foreground: #8888aa;
+  --border: rgba(131, 56, 236, 0.18);
+  --input: rgba(131, 56, 236, 0.45);
+  --primary: #ff006e;
+  --primary-foreground: #ffffff;
+  --accent: #8338ec;
+  --accent-foreground: #ffffff;
+  --destructive: #ff5400;
+  --destructive-foreground: #ffffff;
+  --ring: #ff006e;
+  --sidebar: rgba(10, 10, 15, 0.92);
+  --sidebar-foreground: #ffffff;
+  --sidebar-muted: #a0a0b0;
+  --sidebar-accent: rgba(255, 0, 110, 0.1);
+  --success: #06d6a0;
+  --warning: #ffd60a;
+  --danger: #ff5400;
+  --radius: 0.25rem;
+  --cloudora-blue: #00b4d8;
+  --cloudora-purple: #8338ec;
+  --cloudora-pink: #ff006e;
+  --cloudora-cyan: var(--cloudora-blue);
+  --cloudora-violet: var(--cloudora-purple);
+  --cloudora-teal: var(--cloudora-blue);
+  --ui-radius: 4px;
+  --ui-radius-panel: 4px;
+  --ui-sidebar-width: 16rem;
+  --ui-chrome-border: rgba(131, 56, 236, 0.2);
+  --ui-btn-glow: 0 0 18px rgba(255, 0, 110, 0.35);
+  --ui-focus-glow: 0 0 24px rgba(255, 0, 110, 0.22);
+  --ui-panel-hover-border: rgba(131, 56, 236, 0.35);
+  --ui-panel-hover-shadow: 0 12px 40px rgba(0, 0, 0, 0.35), 0 0 24px rgba(131, 56, 236, 0.08);
+  --ui-dialog-shadow: 0 0 40px rgba(131, 56, 236, 0.2);
+  --ui-fill-glow: 0 0 12px rgba(255, 0, 110, 0.45);
+  --ui-logo-glow: drop-shadow(0 0 18px rgba(131, 56, 236, 0.45));
+  --ui-stat-glow: drop-shadow(0 0 16px rgba(255, 0, 110, 0.3));
+  --ui-nav-hover-shadow: 0 0 16px rgba(255, 0, 110, 0.15);
+  --ui-kicker-tracking: 0.28em;
+  --ui-kicker-transform: uppercase;
+  --ui-title-fill: linear-gradient(135deg, #fff, #aaa);
+  --ui-logo-fill: linear-gradient(135deg, var(--cloudora-pink), var(--cloudora-purple), var(--cloudora-blue));
+  --ui-fill: linear-gradient(90deg, var(--cloudora-pink), var(--cloudora-purple));
+  --ui-panel-blur: blur(12px);
+  --ui-panel-accent-opacity: 0;
+  --ui-panel-accent-hover: 1;
+  --ui-nav-active-bg: rgba(255, 0, 110, 0.1);
+  --ui-nav-active-shadow: inset 3px 0 0 var(--cloudora-pink), 0 0 18px rgba(255, 0, 110, 0.15);
+  --ui-nav-active-text-shadow: 0 0 16px rgba(255, 0, 110, 0.45);
+  --ui-nav-radius: 0;
+  --ui-nav-tracking: 0.05em;
+  --ui-nav-transform: uppercase;
+  --ui-shell-pad: 0px;
+  --ui-shell-gap: 0px;
+  --ui-sidebar-radius: 0;
+  --ui-main-radius: 0;
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-orbitron);
+}
+
+.light {
+  color-scheme: light;
+  --background: #f4f6fb;
+  --foreground: #12121a;
+  --card: #ffffff;
+  --card-foreground: #12121a;
+  --muted: #eceff7;
+  --muted-foreground: #5b5b76;
+  --border: rgba(131, 56, 236, 0.16);
+  --sidebar: rgba(255, 255, 255, 0.92);
+  --sidebar-foreground: #12121a;
+  --sidebar-muted: #5b5b76;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-mono);
+  --font-display: var(--font-orbitron);
+  --radius-lg: 0.5rem;
+  --radius-md: 0.35rem;
+  --radius-sm: var(--radius);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body {
+  min-height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  overflow-x: hidden;
+}
+
+select {
+  color: var(--foreground);
+  background-color: var(--card);
+}
+
+select option,
+select optgroup {
+  color: #111111;
+  background-color: #ffffff;
+}
+
+::selection {
+  background: var(--cloudora-pink);
+  color: #fff;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--ui-fill);
+  border-radius: var(--ui-radius);
+}
+
+@keyframes cloudora-orb-float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(30px, -40px) scale(1.1);
+  }
+  50% {
+    transform: translate(-20px, 20px) scale(0.95);
+  }
+  75% {
+    transform: translate(40px, 30px) scale(1.05);
+  }
+}
+
+.cloudora-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.28;
+  pointer-events: none;
+  animation: cloudora-orb-float 10s ease-in-out infinite;
+}
+
+.cloudora-panel {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  border-radius: var(--ui-radius-panel);
+  backdrop-filter: var(--ui-panel-blur);
+  position: relative;
+  overflow: hidden;
+  transition:
+    border-color 0.35s ease,
+    box-shadow 0.35s ease,
+    transform 0.2s ease;
+}
+
+.cloudora-panel:hover {
+  border-color: var(--ui-panel-hover-border);
+  box-shadow: var(--ui-panel-hover-shadow);
+}
+
+.cloudora-panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--cloudora-pink), var(--cloudora-purple), transparent);
+  opacity: var(--ui-panel-accent-opacity);
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+
+.cloudora-panel:hover::before {
+  opacity: var(--ui-panel-accent-hover);
+}
+
+.cloudora-logo {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  background: var(--ui-logo-fill);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: var(--ui-logo-glow);
+}
+
+.cloudora-title {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 900;
+  background: var(--ui-title-fill);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.cloudora-stat {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--cloudora-pink), var(--cloudora-purple));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: var(--ui-stat-glow);
+}
+
+.cloudora-section {
+  font-family: var(--font-display), sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: var(--ui-kicker-tracking);
+  text-transform: var(--ui-kicker-transform);
+  color: var(--cloudora-blue);
+  text-shadow: 0 0 18px rgba(0, 180, 216, 0.45);
+}
+
+.cloudora-nav-active {
+  color: var(--foreground) !important;
+  background: var(--ui-nav-active-bg);
+  border-radius: var(--ui-nav-radius);
+  box-shadow: var(--ui-nav-active-shadow);
+  text-shadow: var(--ui-nav-active-text-shadow);
+}
+
+.cloudora-gauge {
+  height: 6px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cloudora-gauge > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ui-fill);
+  box-shadow: var(--ui-fill-glow);
+}
+
+.cloudora-fill {
+  background: var(--ui-fill);
+  box-shadow: var(--ui-fill-glow);
+}
+
+.app-shell {
+  padding: var(--ui-shell-pad);
+  gap: var(--ui-shell-gap);
+}
+
+.app-sidebar {
+  width: var(--ui-sidebar-width);
+  border-color: var(--ui-chrome-border);
+  border-radius: var(--ui-sidebar-radius);
+}
+
+.app-sidebar-footer {
+  border-color: var(--ui-chrome-border);
+}
+
+.app-main {
+  border-radius: var(--ui-main-radius);
+}
+
+.app-nav-link {
+  letter-spacing: var(--ui-nav-tracking);
+  text-transform: var(--ui-nav-transform);
+  border-radius: var(--ui-nav-radius);
+}
+
+.app-nav-link:hover {
+  box-shadow: var(--ui-nav-hover-shadow);
+}

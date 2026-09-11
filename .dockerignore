@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.env
+.env.local
+storage
+data
+coverage
+tests
+docs
+*.md
+!README.md
+.vscode
+.idea
+agent-transcripts
+

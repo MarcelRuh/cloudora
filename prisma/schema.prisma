@@ -1,0 +1,182 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AuditResult {
+  SUCCESS
+  FAILURE
+}
+
+enum SharePermission {
+  READ
+  DOWNLOAD
+  EDIT
+}
+
+model User {
+  id                   String    @id @default(cuid())
+  username             String    @unique
+  displayName          String
+  email                String    @unique
+  passwordHash         String
+  status               UserStatus @default(ACTIVE)
+  totpEnabled          Boolean   @default(false)
+  totpSecret           String?
+  lastLoginAt          DateTime?
+  homePathEnabled      Boolean   @default(true)
+  homePath             String    @default("")
+  quotaBytes           BigInt?
+  usedBytes            BigInt    @default(0)
+  canUpload            Boolean   @default(true)
+  canDownload          Boolean   @default(true)
+  canDelete            Boolean   @default(true)
+  canEdit              Boolean   @default(true)
+  canShare             Boolean   @default(true)
+  canOneTimeDownload   Boolean   @default(true)
+  appearance           String    @default("dark")
+  roleId               String
+  role                 Role      @relation(fields: [roleId], references: [id])
+  sessions             Session[]
+  auditLogs            AuditLog[]
+  oneTimeDownloads     OneTimeDownload[]
+  shares               Share[]
+  trashItems           TrashItem[]
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String   @default("")
+  isSystem    Boolean  @default(false)
+  permissions String[]
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  ip         String?
+  userAgent  String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model FileIndex {
+  id          String   @id @default(cuid())
+  virtualPath String   @unique
+  name        String
+  isDir       Boolean
+  size        BigInt   @default(0)
+  mimeType    String?
+  ownerId     String?
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+  @@index([ownerId])
+}
+
+model Share {
+  id           String          @id @default(cuid())
+  tokenHash    String          @unique
+  createdById  String
+  createdBy    User            @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  virtualPath  String
+  name         String
+  permission   SharePermission @default(DOWNLOAD)
+  passwordHash String?
+  expiresAt    DateTime?
+  revokedAt    DateTime?
+  downloadCount Int            @default(0)
+  createdAt    DateTime        @default(now())
+
+  @@index([createdById])
+}
+
+model OneTimeDownload {
+  id               String    @id @default(cuid())
+  tokenHash        String    @unique
+  createdById      String
+  createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  virtualPath      String
+  name             String
+  description      String    @default("")
+  passwordHash     String?
+  expiresAt        DateTime
+  maxDownloads     Int       @default(1)
+  downloadCount    Int       @default(0)
+  lastDownloadedAt DateTime?
+  lastIp           String?
+  lastUserAgent    String?
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([createdById])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  userId    String?
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  ip        String?
+  userAgent String?
+  action    String
+  target    String?
+  result    AuditResult
+  error     String?
+  metadata  Json?
+  createdAt DateTime    @default(now())
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([userId])
+}
+
+model TrashItem {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  originalVirtualPath String
+  name                String
+  isDir               Boolean
+  size                BigInt   @default(0)
+  deletedAt           DateTime @default(now())
+  expiresAt           DateTime
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model RateLimit {
+  key     String   @id
+  count   Int
+  resetAt DateTime
+
+  @@index([resetAt])
+}
+
+model Setting {
+  key   String @id
+  value Json
+}
