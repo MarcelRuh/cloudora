@@ -8,7 +8,9 @@ Absolute path **inside** the process/container. Examples: `/storage`, `/home`, `
 
 Administrators browse this root. Docker: the path must exist in the container (bind-mount).
 
-`CLOUDORA_HOST_STORAGE` (default `./storage`) is the host path Compose bind-mounts onto `CLOUDORA_STORAGE_PATH` (default `/storage`). Extra disks: `docker-compose.override.yml`.
+`CLOUDORA_HOST_STORAGE` (default `./storage`) is the **host** path Compose bind-mounts onto `CLOUDORA_STORAGE_PATH` (default `/storage`). Point this at a Proxmox/ZFS dataset such as `/mnt/cloudora` so all files live on that disk. The path picker treats that host path as the volume — do not link it again as an extra volume.
+
+Extra disks besides the main bind: **Administration → Speicher → Volumes**, written to `docker-compose.cloudora-volumes.yml`. The sidecar recreates only the `cloudora` service (`docker compose up -d --no-build --no-deps cloudora`).
 
 To use the host `/home` directory:
 

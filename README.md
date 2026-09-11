@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> Status: **v1.2.2** – Self-Hosted Cloud Storage mit Papierkorb, 2FA, Backup, Self-Update und Extra-Volumes.
+> Status: **v1.2.3** – Self-Hosted Cloud Storage mit Papierkorb, 2FA, Backup, Self-Update und Extra-Volumes.
 
 Cloudora ist der zentrale Datei- und Cloud-Speicher der gleichen Software-Familie wie [Proxora](https://github.com/MarcelRuh/proxora): dunkles, technisches UI, klare Administration, Self-Hosting hinter Nginx Proxy Manager.
 

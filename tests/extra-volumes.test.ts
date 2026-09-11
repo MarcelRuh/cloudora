@@ -16,6 +16,7 @@ import {
   slugifyVolumeId,
   syncAutoExtraVolumes,
 } from "@/server/storage/extra-volumes";
+import { filesystemPathOnHostStorage, remapConfiguredOntoHostStorage } from "@/server/storage/host-storage";
 import { detectHostRoot, isHostBrowseFsPath, toDisplayPath, toFilesystemPath } from "@/server/storage/host-fs";
 
 describe("host fs mapping", () => {
@@ -66,6 +67,13 @@ describe("extra volumes", () => {
     expect(() => normalizeExtraVolume({ id: "users", name: "users", hostPath: "/mnt/x" })).toThrow(AppError);
   });
 
+  it("maps host storage bind onto the container volume", () => {
+    expect(remapConfiguredOntoHostStorage("/mnt/cloudora", "/mnt/cloudora", "shared")).toBe("shared");
+    expect(remapConfiguredOntoHostStorage("/mnt/cloudora/fotos", "/mnt/cloudora", "shared")).toBe("fotos");
+    expect(filesystemPathOnHostStorage("/mnt/cloudora", "/mnt/cloudora", "/storage")).toBe("/storage");
+    expect(filesystemPathOnHostStorage("/mnt/cloudora/users", "/mnt/cloudora", "/storage")).toBe("/storage/users");
+  });
+
   it("maps host paths through extra volumes and syncs auto binds", () => {
     expect(configuredPathNeedsHostBind("/mnt/clustern", "/storage")).toBe(true);
     expect(configuredPathNeedsHostBind("shared", "/storage")).toBe(false);
@@ -88,6 +96,12 @@ describe("extra volumes", () => {
     expect(reused).toHaveLength(1);
     expect(reused[0]?.id).toBe("hdd");
     expect(extraVolumesFingerprint(volumes)).not.toBe(extraVolumesFingerprint([]));
+  });
+
+  it("does not extra-bind the compose host storage path", () => {
+    expect(configuredPathNeedsHostBind("/mnt/cloudora", "/storage", "/mnt/cloudora")).toBe(false);
+    expect(configuredPathNeedsHostBind("/mnt/other", "/storage", "/mnt/cloudora")).toBe(true);
+    expect(syncAutoExtraVolumes([], "/storage", "users", "/mnt/cloudora", "/mnt/cloudora")).toEqual([]);
   });
 
   it("parses and renders compose yaml without wiping service volumes when empty", () => {

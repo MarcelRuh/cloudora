@@ -87,13 +87,15 @@ apply_extra_volumes() {
   if [ -f "$VOLUMES_SPEC" ]; then
     cp "$VOLUMES_SPEC" "${INSTALL_DIR}/docker-compose.cloudora-volumes.yml"
   fi
-  echo "==> Applying extra storage volumes"
+  echo "==> Applying extra storage volumes (cloudora only)"
   cd "$INSTALL_DIR"
   if [ -S /var/run/docker.sock ]; then
     unset DOCKER_HOST
   fi
+  # Only recreate the app. Recreating this sidecar (or --remove-orphans) kills compose mid-flight
+  # and leaves postgres/cloudora stuck in Created.
   # shellcheck disable=SC2046
-  docker compose $(compose_files) up -d --no-build --remove-orphans
+  docker compose $(compose_files) up -d --no-build --no-deps cloudora
 }
 
 sync_lock

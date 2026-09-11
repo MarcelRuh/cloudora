@@ -4,7 +4,7 @@ import { getEnv } from "@/server/env";
 import { AppError } from "@/lib/errors";
 import { isBuildPhase } from "@/lib/utils";
 import { isAbsolutePosixPath, normalizeConfiguredPath } from "@/server/storage/configured-path";
-import { extraVolumeBinds, getCachedExtraVolumes, hydrateExtraVolumes, resolveThroughExtraVolumes } from "@/server/storage/extra-volumes";
+import { extraVolumeBinds, getCachedExtraVolumes, hydrateExtraVolumes, remapConfiguredOntoHostStorage, resolveThroughExtraVolumes } from "@/server/storage/extra-volumes";
 import { inspectLinuxPath } from "@/server/storage/browse-linux";
 
 export const STORAGE_PATHS_KEY = "storage.paths";
@@ -55,7 +55,12 @@ export function resolveSharedDirAbs(): string {
 
 export function inspectPath(absPath: string): { exists: boolean; isDirectory: boolean; writable: boolean } {
   const cfg = getStoragePaths();
-  const inspected = inspectLinuxPath(absPath, cfg.storagePath, extraVolumeBinds(cfg.storagePath, getCachedExtraVolumes()));
+  const inspected = inspectLinuxPath(
+    absPath,
+    cfg.storagePath,
+    extraVolumeBinds(cfg.storagePath, getCachedExtraVolumes()),
+    getEnv().hostStorage,
+  );
   return { exists: inspected.exists, isDirectory: inspected.isDirectory, writable: inspected.writable };
 }
 
@@ -99,13 +104,27 @@ export async function hydrateStoragePaths(): Promise<StoragePaths> {
 
 export async function saveStoragePaths(input: Partial<StoragePaths>): Promise<StoragePaths> {
   const current = await hydrateStoragePaths();
+  const hostStorage = getEnv().hostStorage;
   const next: StoragePaths = {
     storagePath:
       input.storagePath != null
-        ? path.resolve(requireAbsolutePath(input.storagePath))
+        ? path.resolve(
+            requireAbsolutePath(
+              remapConfiguredOntoHostStorage(input.storagePath, hostStorage, current.storagePath),
+            ),
+          )
         : current.storagePath,
-    usersDir: input.usersDir != null ? normalizeConfiguredPath(input.usersDir, current.usersDir) : current.usersDir,
-    sharedDir: input.sharedDir != null ? normalizeConfiguredPath(input.sharedDir, current.sharedDir) : current.sharedDir,
+    usersDir:
+      input.usersDir != null
+        ? normalizeConfiguredPath(remapConfiguredOntoHostStorage(input.usersDir, hostStorage, "users"), current.usersDir)
+        : current.usersDir,
+    sharedDir:
+      input.sharedDir != null
+        ? normalizeConfiguredPath(
+            remapConfiguredOntoHostStorage(input.sharedDir, hostStorage, "shared"),
+            current.sharedDir,
+          )
+        : current.sharedDir,
   };
   await prisma.setting.upsert({
     where: { key: STORAGE_PATHS_KEY },

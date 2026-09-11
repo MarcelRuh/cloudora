@@ -1,6 +1,6 @@
 {
   "name": "cloudora",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "description": "Cloudora – self-hosted cloud storage and file explorer",
   "license": "MIT",

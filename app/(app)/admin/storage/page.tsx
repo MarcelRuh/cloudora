@@ -80,7 +80,7 @@ export default function StoragePage() {
         <p className="cloudora-section">Administration</p>
         <h1 className="cloudora-title mt-1 text-3xl md:text-4xl">Speicher</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Standard-Pfade, zusätzliche Host-Volumes und Home-Pfade. In Docker listet Linux / den Host (`/host`). Extra-Volumes erscheinen nach dem Übernehmen unter /volumes.
+          Der Compose-Bind (`CLOUDORA_HOST_STORAGE`, z. B. ein Proxmox-Mount) ist `/storage`. Extra-Volumes nur für weitere Host-Ordner außerhalb davon.
         </p>
       </div>
 
@@ -126,7 +126,7 @@ export default function StoragePage() {
             }}
           >
             <p className="text-sm text-muted-foreground">
-              Pfade tippen oder durchsuchen. Unter dem Storage-Root wird relativ gespeichert (z. B. users), außerhalb absolut (z. B. /mnt/daten). Linux / listet den Host — /host ist nur lesen; Host-Ordner werden beim Speichern als Volume gemountet.
+              Dateien liegen auf dem Docker-Volume (hier: Host-Pfad aus CLOUDORA_HOST_STORAGE). Unterordner relativ speichern (users, shared). Andere Host-Ordner werden nur gelinkt, wenn sie außerhalb dieses Volumes liegen.
             </p>
             <PathPickerField
               label="Storage-Root"
@@ -142,8 +142,9 @@ export default function StoragePage() {
               onChange={setUsersDir}
               storageRoot={storagePath}
               preferRelative
+              volumeRootRelative="users"
               placeholder="users oder /home"
-              hint="Relativ zum Storage-Root (users) oder absolut (/home)."
+              hint="Relativ zum Storage-Root (users). Der Host-Bind (CLOUDORA_HOST_STORAGE) ist bereits das Volume."
             />
             <PathPickerField
               label="Shared-Ordner"
@@ -151,8 +152,9 @@ export default function StoragePage() {
               onChange={setSharedDir}
               storageRoot={storagePath}
               preferRelative
+              volumeRootRelative="shared"
               placeholder="shared"
-              hint="Relativ zum Storage-Root (shared) oder absolut (/mnt/daten). Host-Pfade werden beim Speichern gelinkt."
+              hint="Relativ zum Storage-Root (shared). Derselbe Host-Ordner wie das Volume nicht extra linken."
             />
             <Button type="submit" disabled={save.isPending}>
               {save.isPending ? "…" : "Pfade speichern"}

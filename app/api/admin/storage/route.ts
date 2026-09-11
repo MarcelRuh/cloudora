@@ -56,8 +56,8 @@ export async function GET() {
       sharedDir: paths.sharedDir,
       extraVolumes: extras,
       storageStatus: inspectPath(paths.storagePath),
-      usersDirStatus: inspectLinuxPath(paths.usersDir, paths.storagePath, binds),
-      sharedDirStatus: inspectLinuxPath(paths.sharedDir, paths.storagePath, binds),
+      usersDirStatus: inspectLinuxPath(paths.usersDir, paths.storagePath, binds, env.hostStorage),
+      sharedDirStatus: inspectLinuxPath(paths.sharedDir, paths.storagePath, binds, env.hostStorage),
       usedBytes: Number(used),
       users: users.map((u) => ({
         ...u,
@@ -81,9 +81,10 @@ export async function PATCH(request: Request) {
     await assertSameOrigin();
     const actor = await requirePermission("storage.global");
     const body = await readJson(request, patchSchema);
+    const hostStorage = getEnv().hostStorage;
     const previous = await hydrateExtraVolumes();
     const paths = await saveStoragePaths(body);
-    const synced = syncAutoExtraVolumes(previous, paths.storagePath, paths.usersDir, paths.sharedDir);
+    const synced = syncAutoExtraVolumes(previous, paths.storagePath, paths.usersDir, paths.sharedDir, hostStorage);
     const volumesChanged = extraVolumesFingerprint(synced) !== extraVolumesFingerprint(previous);
     if (volumesChanged) {
       await saveExtraVolumes(synced);
@@ -91,8 +92,8 @@ export async function PATCH(request: Request) {
     ensureExtraVolumeDirs(paths.storagePath, synced);
     ensureStorageLayout();
     const needsBind =
-      configuredPathNeedsHostBind(paths.usersDir, paths.storagePath) ||
-      configuredPathNeedsHostBind(paths.sharedDir, paths.storagePath);
+      configuredPathNeedsHostBind(paths.usersDir, paths.storagePath, hostStorage) ||
+      configuredPathNeedsHostBind(paths.sharedDir, paths.storagePath, hostStorage);
     const bindPending = synced
       .filter(
         (vol) =>

@@ -202,6 +202,7 @@ export function PathPickerField({
   storageRoot,
   preferRelative = false,
   showStatus = true,
+  volumeRootRelative,
 }: {
   label: string;
   value: string;
@@ -211,6 +212,7 @@ export function PathPickerField({
   storageRoot?: string;
   preferRelative?: boolean;
   showStatus?: boolean;
+  volumeRootRelative?: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -234,6 +236,7 @@ export function PathPickerField({
           initialPath={value}
           storageRoot={storageRoot}
           preferRelative={preferRelative}
+          volumeRootRelative={volumeRootRelative}
           onSelect={(next) => {
             onChange(next);
             setOpen(false);
@@ -249,12 +252,14 @@ function LinuxFolderBrowser({
   initialPath,
   storageRoot: storageRootProp,
   preferRelative,
+  volumeRootRelative,
   onSelect,
   onClose,
 }: {
   initialPath: string;
   storageRoot?: string;
   preferRelative: boolean;
+  volumeRootRelative?: string;
   onSelect: (path: string) => void;
   onClose: () => void;
 }) {
@@ -358,6 +363,16 @@ function LinuxFolderBrowser({
 
   const choose = (absPath: string) => {
     if (absPath === "/") return;
+    const host = (data?.hostStorage || hostStorage || "").replace(/\\/g, "/").replace(/\/+$/, "");
+    if (host && host.startsWith("/") && (absPath === host || absPath.startsWith(`${host}/`))) {
+      const rest = absPath === host ? "" : absPath.slice(host.length + 1);
+      if (!rest) {
+        onSelect(preferRelative ? volumeRootRelative || "shared" : storageRoot);
+        return;
+      }
+      onSelect(preferRelative ? rest : `${storageRoot}/${rest}`);
+      return;
+    }
     onSelect(toConfiguredFromAbsolute(absPath, storageRoot, preferRelative));
   };
 

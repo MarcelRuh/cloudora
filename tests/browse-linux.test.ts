@@ -48,6 +48,20 @@ describe("linux folder browse", () => {
     expect(missing.insideVolume).toBe(true);
   });
 
+  it("treats the compose host-storage path as the writable volume", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-hostvol-"));
+    try {
+      const inspected = inspectLinuxPath("/mnt/cloudora", root, [], "/mnt/cloudora");
+      expect(inspected.insideVolume).toBe(true);
+      expect(inspected.hostBrowse).toBe(false);
+      expect(inspected.exists).toBe(true);
+      expect(inspected.writable).toBe(true);
+      expect(inspected.live).toBe(true);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("treats host-browse paths as not writable until a live bind exists", () => {
     const host = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-hostinspect-"));
     fs.mkdirSync(path.join(host, "mnt"));

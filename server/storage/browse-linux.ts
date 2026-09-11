@@ -4,6 +4,7 @@ import { AppError } from "@/lib/errors";
 import { isInsideStorageRoot, toConfiguredFromAbsolute } from "@/lib/posix-path";
 import { assertSafeFileName } from "@/server/storage/path-resolver";
 import { detectHostRoot, isBlockedSystemPath, isHostBrowseFsPath, isMountPoint, toDisplayPath, toFilesystemPath } from "@/server/storage/host-fs";
+import { filesystemPathOnHostStorage } from "@/server/storage/host-storage";
 
 export const MAX_LINUX_ENTRIES = 400;
 
@@ -139,9 +140,24 @@ export function inspectLinuxPath(
   inputPath: string,
   storageRoot: string,
   binds: VolumeBindHint[] = [],
+  hostStorage = "",
 ): LinuxInspectResult {
   const display = resolveAgainstStorage(inputPath, storageRoot);
   const host = hostRoot();
+  const volumeFs = filesystemPathOnHostStorage(display, hostStorage, storageRoot);
+  if (volumeFs) {
+    const status = inspectLinuxStatus(volumeFs);
+    return {
+      path: display,
+      ...status,
+      insideVolume: true,
+      configured: toConfiguredFromAbsolute(volumeFs, storageRoot, true),
+      hostBrowse: false,
+      linked: true,
+      live: true,
+      volumeId: null,
+    };
+  }
   const fsPath = toFilesystemPath(display, host);
   const hostBrowse = isHostBrowseFsPath(fsPath, host);
   const bind = matchBind(display, fsPath, binds);

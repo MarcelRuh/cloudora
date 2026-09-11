@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const dir = queryParam(url, "dir") || queryParam(url, "path", "");
     const [paths, extras] = await Promise.all([hydrateStoragePaths(), hydrateExtraVolumes()]);
-    const data = inspectLinuxPath(dir, paths.storagePath, extraVolumeBinds(paths.storagePath, extras));
+    const data = inspectLinuxPath(dir, paths.storagePath, extraVolumeBinds(paths.storagePath, extras), getEnv().hostStorage);
     return jsonOk({
       ...data,
       storagePath: paths.storagePath,

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.3 – 2026-09-11
+
+- `CLOUDORA_HOST_STORAGE` (z. B. Proxmox-Mount `/mnt/cloudora`) ist das Docker-Volume — nicht nochmal als Extra-Volume linken
+- Sidecar startet bei Volume-Änderungen nur den App-Container, nicht sich selbst (kein Absturz mehr in Created)
+- Picker erkennt den Host-Bind als beschreibbares Volume
+
 ## 1.2.2 – 2026-09-11
 
 - Host-Ordner in Standard-Pfaden (z. B. `/mnt/clustern`) werden beim Speichern als schreibbares Volume gelinkt

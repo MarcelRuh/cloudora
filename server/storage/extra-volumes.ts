@@ -2,13 +2,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { prisma } from "@/server/db";
 import { AppError } from "@/lib/errors";
-import { isInsideStorageRoot } from "@/lib/posix-path";
 import { isBuildPhase } from "@/lib/utils";
 import { isSignalDirReady, resolveUpdateSignalDir } from "@/lib/self-update-signal";
-import { isAbsolutePosixPath, resolveConfiguredPath } from "@/server/storage/configured-path";
+import { resolveConfiguredPath } from "@/server/storage/configured-path";
 import { assertSafeFileName } from "@/server/storage/path-resolver";
 import { isBlockedSystemPath } from "@/server/storage/host-fs";
+import { configuredPathNeedsHostBind } from "@/server/storage/host-storage";
 import { normalizeBrowsePath } from "@/server/storage/browse-linux";
+
+export {
+  configuredPathNeedsHostBind,
+  remapConfiguredOntoHostStorage,
+  normalizeHostStoragePath,
+} from "@/server/storage/host-storage";
 
 export const EXTRA_VOLUMES_KEY = "storage.extraVolumes";
 export const EXTRA_VOLUMES_DIR = "volumes";
@@ -98,24 +104,18 @@ export function extraVolumeBinds(storagePath: string, volumes: ExtraVolume[]): V
   }));
 }
 
-/** Absolute host path outside the Docker volume — needs a RW bind; `/host` is read-only. */
-export function configuredPathNeedsHostBind(configured: string, storageRoot: string): boolean {
-  const raw = configured.replace(/\\/g, "/").trim();
-  if (!isAbsolutePosixPath(raw)) return false;
-  return !isInsideStorageRoot(raw, storageRoot);
-}
-
 export function syncAutoExtraVolumes(
   current: ExtraVolume[],
   storagePath: string,
   usersDir: string,
   sharedDir: string,
+  hostStorage = "",
 ): ExtraVolume[] {
   const autoIds = new Set([AUTO_USERS_VOLUME_ID, AUTO_SHARED_VOLUME_ID]);
   const next = current.filter((vol) => !autoIds.has(vol.id));
 
   const upsert = (id: string, name: string, configured: string) => {
-    if (!configuredPathNeedsHostBind(configured, storagePath)) return;
+    if (!configuredPathNeedsHostBind(configured, storagePath, hostStorage)) return;
     if (next.some((vol) => vol.hostPath === configured)) return;
     next.push(normalizeExtraVolume({ id, name, hostPath: configured }));
   };
