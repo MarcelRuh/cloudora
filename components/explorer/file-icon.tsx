@@ -7,6 +7,7 @@ import {
   FileText,
   FileVideo,
   Folder,
+  HardDrive,
 } from "lucide-react";
 import type { FileKind } from "@/lib/types";
 
@@ -22,7 +23,16 @@ const MAP: Record<FileKind, typeof File> = {
   other: File,
 };
 
-export function FileGlyph({ kind, className }: { kind: FileKind; className?: string }) {
+export function FileGlyph({
+  kind,
+  className,
+  mount,
+}: {
+  kind: FileKind;
+  className?: string;
+  mount?: boolean;
+}) {
+  if (mount) return <HardDrive className={className} />;
   const Icon = MAP[kind] ?? File;
   return <Icon className={className} />;
 }

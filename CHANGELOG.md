@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.4 – 2026-09-11
+
+- Host-Datenträger im Explorer mit Platten-Icon, Badge und Banner (Name + Host-Pfad für Admins)
+- Administration → Speicher listet Extra-Volumes als Host-Datenträger, nicht als normalen Ordner
+
 ## 1.2.3 – 2026-09-11
 
 - `CLOUDORA_HOST_STORAGE` (z. B. Proxmox-Mount `/mnt/cloudora`) ist das Docker-Volume — nicht nochmal als Extra-Volume linken

@@ -8,8 +8,10 @@ import {
   AUTO_SHARED_VOLUME_ID,
   configuredPathNeedsHostBind,
   extraVolumeContainerPath,
+  extraVolumeForChildName,
   extraVolumesComposeYaml,
   extraVolumesFingerprint,
+  isExtraVolumeRoot,
   normalizeExtraVolume,
   parseExtraVolumes,
   resolveThroughExtraVolumes,
@@ -114,5 +116,10 @@ describe("extra volumes", () => {
     );
     expect(yaml).toContain("/mnt/hdd:/storage/volumes/hdd");
     expect(extraVolumeContainerPath("/storage", "hdd")).toBe("/storage/volumes/hdd");
+    expect(extraVolumeForChildName("/storage/volumes", "hdd", "/storage", [{ id: "hdd", name: "HDD", hostPath: "/mnt/hdd" }])?.name).toBe(
+      "HDD",
+    );
+    expect(isExtraVolumeRoot("/storage/volumes/hdd", "/storage", [{ id: "hdd", name: "HDD", hostPath: "/mnt/hdd" }])).toBe(true);
+    expect(isExtraVolumeRoot("/storage/volumes/hdd/docs", "/storage", [{ id: "hdd", name: "HDD", hostPath: "/mnt/hdd" }])).toBe(false);
   });
 });

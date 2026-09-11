@@ -37,6 +37,12 @@ export type ExplorerEntry = {
   mimeType: string | null;
   kind: FileKind;
   editable: boolean;
+  /** Shown instead of `name` for extra volumes (filesystem name stays `name`). */
+  displayName?: string;
+  mount?: {
+    label: string;
+    hostPath?: string;
+  };
 };
 
 export type Breadcrumb = {

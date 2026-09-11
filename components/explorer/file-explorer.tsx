@@ -7,6 +7,7 @@ import {
   Download,
   FolderPlus,
   Grid3x3,
+  HardDrive,
   LayoutList,
   Link2,
   Pencil,
@@ -34,8 +35,23 @@ type Listing = {
   breadcrumbs: Breadcrumb[];
   scope: string;
   rootLabel: string;
+  mount?: { label: string; hostPath?: string };
   items: ExplorerEntry[];
 };
+
+function entryLabel(entry: ExplorerEntry): string {
+  return entry.displayName || entry.name;
+}
+
+function MountBadge({ mount }: { mount?: { label: string; hostPath?: string } }) {
+  if (!mount) return null;
+  return (
+    <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
+      <HardDrive className="h-3 w-3 shrink-0" />
+      <span className="truncate">{mount.hostPath ? `${mount.label} · ${mount.hostPath}` : mount.label}</span>
+    </span>
+  );
+}
 
 function triggerDownload(filePath: string) {
   const link = document.createElement("a");
@@ -85,7 +101,10 @@ export function FileExplorer({ user, initialPath }: { user: SessionUser; initial
   const items = useMemo(() => {
     const list = [...(listing.data?.items ?? [])];
     const filtered = query
-      ? list.filter((i) => i.name.toLowerCase().includes(query.toLowerCase()))
+      ? list.filter((i) => {
+          const hay = `${i.name} ${i.displayName ?? ""} ${i.mount?.hostPath ?? ""}`.toLowerCase();
+          return hay.includes(query.toLowerCase());
+        })
       : list;
     filtered.sort((a, b) => {
       if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
@@ -288,6 +307,20 @@ export function FileExplorer({ user, initialPath }: { user: SessionUser; initial
         </Button>
       </div>
 
+      {listing.data?.mount ? (
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
+          <HardDrive className="h-4 w-4 shrink-0 text-primary" />
+          <div className="min-w-0">
+            <p className="font-medium text-primary">{listing.data.mount.label}</p>
+            {listing.data.mount.hostPath ? (
+              <p className="truncate font-mono text-xs text-muted-foreground">{listing.data.mount.hostPath}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Dateien liegen auf einem zusätzlichen Host-Ordner, nicht in der Cloudora-Installation.</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       <div className="mb-4 flex flex-wrap gap-2">
         {userHasPermission(user, "files.upload") ? (
           <>
@@ -354,9 +387,12 @@ export function FileExplorer({ user, initialPath }: { user: SessionUser; initial
                   }}
                 >
                   <td className="px-3 py-2">
-                    <span className="flex items-center gap-2">
-                      <FileGlyph kind={entry.kind} className="h-4 w-4 text-primary" />
-                      <span className="truncate">{entry.name}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <FileGlyph kind={entry.kind} mount={Boolean(entry.mount)} className="h-4 w-4 shrink-0 text-primary" />
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">{entryLabel(entry)}</span>
+                        {entry.mount ? <MountBadge mount={entry.mount} /> : null}
+                      </span>
                     </span>
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">{entry.isDir ? "—" : formatBytes(entry.size)}</td>
@@ -383,8 +419,9 @@ export function FileExplorer({ user, initialPath }: { user: SessionUser; initial
                   setMenu({ x: e.clientX, y: e.clientY, entry });
                 }}
               >
-                <FileGlyph kind={entry.kind} className="h-10 w-10 text-primary" />
-                <span className="w-full truncate text-xs">{entry.name}</span>
+                <FileGlyph kind={entry.kind} mount={Boolean(entry.mount)} className="h-10 w-10 text-primary" />
+                <span className="w-full truncate text-xs">{entryLabel(entry)}</span>
+                {entry.mount ? <MountBadge mount={entry.mount} /> : null}
               </button>
             ))}
           </div>
@@ -401,6 +438,13 @@ export function FileExplorer({ user, initialPath }: { user: SessionUser; initial
           onClick={(e) => e.stopPropagation()}
         >
           <MenuItem onClick={() => openEntry(menu.entry)}>Öffnen</MenuItem>
+          {menu.entry.mount ? (
+            <p className="px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+              {menu.entry.mount.hostPath
+                ? `${menu.entry.mount.label} · ${menu.entry.mount.hostPath}`
+                : menu.entry.mount.label}
+            </p>
+          ) : null}
           {menu.entry.editable ? (
             <MenuItem onClick={() => router.push(`/files/edit?path=${encodeURIComponent(menu.entry.path)}`)}>
               <Pencil className="h-3.5 w-3.5" /> In Formator
@@ -411,7 +455,8 @@ export function FileExplorer({ user, initialPath }: { user: SessionUser; initial
               <Download className="h-3.5 w-3.5" /> Download
             </MenuItem>
           ) : null}
-          <MenuItem onClick={() => setRenameFor(menu.entry)}>Umbenennen</MenuItem>
+          {menu.entry.mount ? null : <MenuItem onClick={() => setRenameFor(menu.entry)}>Umbenennen</MenuItem>}
+          {menu.entry.mount ? null : (
           <MenuItem
             onClick={() => {
               setClipboard({ mode: "copy", paths: [menu.entry.path] });
@@ -420,6 +465,7 @@ export function FileExplorer({ user, initialPath }: { user: SessionUser; initial
           >
             <Copy className="h-3.5 w-3.5" /> Kopieren
           </MenuItem>
+          )}
           {userHasPermission(user, "shares.create") ? (
             <MenuItem onClick={() => setShareFor(menu.entry)}>
               <Share2 className="h-3.5 w-3.5" /> Freigeben
@@ -430,6 +476,7 @@ export function FileExplorer({ user, initialPath }: { user: SessionUser; initial
               <Link2 className="h-3.5 w-3.5" /> One-Time-Download
             </MenuItem>
           ) : null}
+          {menu.entry.mount ? null : (
           <MenuItem
             onClick={() => {
               if (confirm("In den Papierkorb legen?")) del.mutate([menu.entry.path]);
@@ -438,6 +485,7 @@ export function FileExplorer({ user, initialPath }: { user: SessionUser; initial
           >
             <Trash2 className="h-3.5 w-3.5" /> Löschen
           </MenuItem>
+          )}
         </div>
       ) : null}
 

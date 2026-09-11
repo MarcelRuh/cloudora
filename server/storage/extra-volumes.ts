@@ -96,6 +96,37 @@ export function extraVolumeContainerPath(storagePath: string, id: string): strin
   return `${root}/${EXTRA_VOLUMES_DIR}/${id}`;
 }
 
+export function extraVolumeForAbsPath(
+  absPath: string,
+  storageRoot: string,
+  volumes: ExtraVolume[],
+): ExtraVolume | null {
+  const resolved = path.resolve(absPath);
+  for (const vol of volumes) {
+    const target = extraVolumeContainerPath(storageRoot, vol.id);
+    if (resolved === target || resolved.startsWith(`${target}${path.sep}`) || resolved.startsWith(`${target}/`)) {
+      return vol;
+    }
+  }
+  return null;
+}
+
+export function extraVolumeForChildName(
+  parentAbs: string,
+  childName: string,
+  storageRoot: string,
+  volumes: ExtraVolume[],
+): ExtraVolume | null {
+  const volumesDir = path.resolve(storageRoot.replace(/\/+$/, "") || "/storage", EXTRA_VOLUMES_DIR);
+  if (path.resolve(parentAbs) !== volumesDir) return null;
+  return volumes.find((vol) => vol.id === childName) ?? null;
+}
+
+export function isExtraVolumeRoot(absPath: string, storageRoot: string, volumes: ExtraVolume[]): boolean {
+  const resolved = path.resolve(absPath);
+  return volumes.some((vol) => resolved === extraVolumeContainerPath(storageRoot, vol.id));
+}
+
 export function extraVolumeBinds(storagePath: string, volumes: ExtraVolume[]): VolumeBind[] {
   return volumes.map((vol) => ({
     id: vol.id,

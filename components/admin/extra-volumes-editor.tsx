@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { HardDrive, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PathPickerField } from "@/components/admin/path-picker";
@@ -72,20 +72,27 @@ export function ExtraVolumesEditor({
   return (
     <Card className="space-y-4">
       <div>
-        <p className="cloudora-section">Zusätzliche Speicher</p>
+        <p className="cloudora-section">Host-Datenträger</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Host-Ordner aus Linux / wählen und linken. `/host` ist nur zum Durchsuchen (lesen). Nach dem Übernehmen liegen die Ordner schreibbar im Explorer unter{" "}
-          <span className="font-mono">/volumes/…</span>. `.env` und der Storage-Root bleiben.
+          Zusätzliche Host-Ordner (z. B. Proxmox-Mount). Cloudora selbst bleibt auf dem Installations-Volume. Nach dem Übernehmen erscheinen sie im Explorer mit Platten-Icon unter{" "}
+          <span className="font-mono">/volumes/…</span>.
         </p>
       </div>
       <ul className="divide-y divide-white/5 rounded-lg border border-border">
         {rows.map((row) => (
           <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
             <div className="min-w-0">
-              <p className="font-medium">{row.name}</p>
-              <p className="truncate font-mono text-xs text-muted-foreground">
-                {row.hostPath} → {storagePath.replace(/\/+$/, "")}/volumes/{row.id}
+              <p className="flex flex-wrap items-center gap-2 font-medium">
+                <HardDrive className="h-4 w-4 text-primary" />
+                {row.name}
+                <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
+                  Host-Datenträger
+                </span>
               </p>
+              <p className="truncate font-mono text-xs text-muted-foreground">
+                {row.hostPath} → /volumes/{row.id}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Nicht die Cloudora-Installation — nur Dateien auf diesem Host-Ordner.</p>
             </div>
             <Button
               type="button"

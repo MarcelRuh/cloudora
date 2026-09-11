@@ -6,7 +6,7 @@ import archiver from "archiver";
 import { PassThrough, type Readable } from "node:stream";
 import { AppError } from "@/lib/errors";
 import { isEditable, kindOf } from "@/lib/file-kinds";
-import { userHasPermission, type Permission } from "@/lib/permissions";
+import { isAdministrator, userHasPermission, type Permission } from "@/lib/permissions";
 import type { Breadcrumb, ExplorerEntry, SessionUser } from "@/lib/types";
 import { prisma } from "@/server/db";
 import { getEnv } from "@/server/env";
@@ -34,6 +34,14 @@ import {
 } from "@/server/storage/path-resolver";
 import { assertQuota, bumpUsedBytes } from "@/server/storage/quota";
 import { scopeForUser } from "@/server/storage/scope";
+import {
+  extraVolumeForAbsPath,
+  extraVolumeForChildName,
+  getCachedExtraVolumes,
+  hydrateExtraVolumes,
+  isExtraVolumeRoot,
+} from "@/server/storage/extra-volumes";
+import { storageRootAbs } from "@/server/storage/config";
 
 const EDITOR_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -43,7 +51,21 @@ function requirePerm(user: SessionUser, permission: Permission): void {
   }
 }
 
-function toEntry(resolved: ResolvedPath, stat: fs.Stats): ExplorerEntry {
+function mountPayload(vol: { name: string; hostPath: string } | null, showHost: boolean) {
+  if (!vol) return undefined;
+  return {
+    label: "Host-Datenträger",
+    hostPath: showHost ? vol.hostPath : undefined,
+  };
+}
+
+function toEntry(
+  resolved: ResolvedPath,
+  stat: fs.Stats,
+  vol: { name: string; hostPath: string } | null = null,
+  showHost = false,
+): ExplorerEntry {
+  const mount = mountPayload(vol, showHost);
   return {
     name: resolved.name,
     path: resolved.virtualPath,
@@ -53,10 +75,16 @@ function toEntry(resolved: ResolvedPath, stat: fs.Stats): ExplorerEntry {
     mimeType: stat.isDirectory() ? null : mimeFromName(resolved.name),
     kind: kindOf(resolved.name, stat.isDirectory()),
     editable: isEditable(resolved.name, stat.isDirectory()),
+    displayName: vol && stat.isDirectory() ? vol.name : undefined,
+    mount,
   };
 }
 
-export function breadcrumbs(virtualPath: string, rootLabel: string): Breadcrumb[] {
+export function breadcrumbs(
+  virtualPath: string,
+  rootLabel: string,
+  volumeNames: Record<string, string> = {},
+): Breadcrumb[] {
   const normalized = normalizeVirtualPath(virtualPath);
   const crumbs: Breadcrumb[] = [{ name: rootLabel, path: "/" }];
   if (normalized === "/") return crumbs;
@@ -64,7 +92,9 @@ export function breadcrumbs(virtualPath: string, rootLabel: string): Breadcrumb[
   let current = "";
   for (const part of parts) {
     current += `/${part}`;
-    crumbs.push({ name: part, path: current });
+    const label =
+      part === "volumes" ? "Volumes" : volumeNames[part] ? volumeNames[part] : part;
+    crumbs.push({ name: label, path: current });
   }
   return crumbs;
 }
@@ -109,10 +139,16 @@ export function resolveUserPath(user: SessionUser, virtualPath: string): Resolve
 
 export async function listFiles(user: SessionUser, virtualPath: string) {
   requirePerm(user, "files.read");
+  await hydrateExtraVolumes();
   const resolved = resolveUserPath(user, virtualPath);
   const stat = await statOrNull(resolved.absPath);
   if (!stat) throw new AppError("NOT_FOUND", "Ordner nicht gefunden.", 404);
   if (!stat.isDirectory()) throw new AppError("NOT_A_FOLDER", "Der Pfad ist kein Ordner.", 400);
+  const volumes = getCachedExtraVolumes();
+  const storageRoot = storageRootAbs();
+  const showHost = isAdministrator(user);
+  const volumeNames = Object.fromEntries(volumes.map((vol) => [vol.id, vol.name]));
+  const hereVol = extraVolumeForAbsPath(resolved.absPath, storageRoot, volumes);
   const entries = await listDirectory(resolved.absPath);
   const items: ExplorerEntry[] = [];
   for (const entry of entries) {
@@ -120,18 +156,28 @@ export async function listFiles(user: SessionUser, virtualPath: string) {
     const child = resolveUserPath(user, childVirtual(resolved.virtualPath, entry.name));
     const childStat = await statOrNull(child.absPath);
     if (!childStat) continue;
-    items.push(toEntry(child, childStat));
+    const childVol =
+      extraVolumeForChildName(resolved.absPath, entry.name, storageRoot, volumes) ??
+      (isExtraVolumeRoot(child.absPath, storageRoot, volumes)
+        ? extraVolumeForAbsPath(child.absPath, storageRoot, volumes)
+        : null);
+    items.push(toEntry(child, childStat, childVol, showHost));
     void upsertIndex(child, childStat, user.id);
   }
   items.sort((a, b) => {
     if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
     return a.name.localeCompare(b.name, "de", { sensitivity: "base" });
   });
+  const rootLabel =
+    resolved.virtualPath === "/" && hereVol
+      ? hereVol.name
+      : resolved.scope.rootLabel;
   return {
     path: resolved.virtualPath,
-    breadcrumbs: breadcrumbs(resolved.virtualPath, resolved.scope.rootLabel),
+    breadcrumbs: breadcrumbs(resolved.virtualPath, rootLabel, volumeNames),
     scope: resolved.scope.kind,
-    rootLabel: resolved.scope.rootLabel,
+    rootLabel,
+    mount: mountPayload(hereVol, showHost),
     items,
   };
 }
@@ -154,6 +200,9 @@ export async function createFolder(user: SessionUser, parent: string, name: stri
 export async function renameEntry(user: SessionUser, virtualPath: string, newName: string) {
   const source = resolveUserPath(user, virtualPath);
   if (source.virtualPath === "/") throw new AppError("FORBIDDEN", "Das Wurzelverzeichnis kann nicht umbenannt werden.", 400);
+  if (isExtraVolumeRoot(source.absPath, storageRootAbs(), getCachedExtraVolumes())) {
+    throw new AppError("FORBIDDEN", "Host-Datenträger können nicht umbenannt werden.", 400);
+  }
   const stat = await statOrNull(source.absPath);
   if (!stat) throw new AppError("NOT_FOUND", "Datei oder Ordner nicht gefunden.", 404);
   requirePerm(user, stat.isDirectory() ? "folders.rename" : "files.rename");
@@ -171,6 +220,9 @@ export async function renameEntry(user: SessionUser, virtualPath: string, newNam
 async function prepareDestination(user: SessionUser, from: string, toDir: string, conflictName?: string) {
   const source = resolveUserPath(user, from);
   if (source.virtualPath === "/") throw new AppError("FORBIDDEN", "Das Wurzelverzeichnis kann nicht verschoben werden.", 400);
+  if (isExtraVolumeRoot(source.absPath, storageRootAbs(), getCachedExtraVolumes())) {
+    throw new AppError("FORBIDDEN", "Host-Datenträger können nicht verschoben werden.", 400);
+  }
   const destParent = resolveUserPath(user, toDir);
   const dest = resolveUserPath(user, childVirtual(destParent.virtualPath, conflictName || source.name));
   if (dest.virtualPath === source.virtualPath || dest.virtualPath.startsWith(`${source.virtualPath}/`)) {
@@ -213,6 +265,9 @@ export async function copyEntry(user: SessionUser, from: string, toDir: string) 
 
 export async function deleteEntry(user: SessionUser, virtualPath: string) {
   const resolved = resolveUserPath(user, virtualPath);
+  if (isExtraVolumeRoot(resolved.absPath, storageRootAbs(), getCachedExtraVolumes())) {
+    throw new AppError("FORBIDDEN", "Host-Datenträger können nicht gelöscht werden.", 400);
+  }
   const { moveToTrash } = await import("@/server/services/trash-service");
   await moveToTrash(user, virtualPath);
   await removeIndex(resolved.scope.kind, resolved.virtualPath);
