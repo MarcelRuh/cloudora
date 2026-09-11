@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Cloudora one-line installer
+#
+# wget -qO- https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/install.sh | bash
 set -euo pipefail
 
 REPO_URL="${CLOUDORA_REPO_URL:-https://github.com/MarcelRuh/cloudora.git}"
@@ -26,13 +29,13 @@ install_base_packages() {
   if command -v apt-get >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
-    apt-get install -y -qq curl git ca-certificates openssl
+    apt-get install -y -qq wget git ca-certificates openssl
   elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y curl git ca-certificates openssl
+    dnf install -y wget git ca-certificates openssl
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y curl git ca-certificates openssl
+    yum install -y wget git ca-certificates openssl
   fi
-  command -v curl >/dev/null || die "curl fehlt"
+  command -v wget >/dev/null || die "wget fehlt"
   command -v git >/dev/null || die "git fehlt"
   command -v openssl >/dev/null || die "openssl fehlt"
 }
@@ -55,7 +58,7 @@ install_docker() {
     . /etc/os-release
   fi
 
-  curl -fsSL https://get.docker.com | sh
+  wget -qO- https://get.docker.com | sh
 
   if command -v systemctl >/dev/null 2>&1; then
     systemctl enable docker >/dev/null 2>&1 || true

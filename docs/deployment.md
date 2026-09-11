@@ -2,7 +2,13 @@
 
 ## Install script
 
-`scripts/install.sh` installs Git, curl, **Docker Engine and Compose** when they are missing, then starts the stack. Run as root:
+`scripts/install.sh` installs Git, wget, **Docker Engine and Compose** when they are missing, then starts the stack. Run as root:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/install.sh | bash
+```
+
+From a checkout:
 
 ```bash
 sudo bash scripts/install.sh

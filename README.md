@@ -50,12 +50,24 @@ Nach dem Start: Login → Dashboard → Dateien.
 
 ## Installation
 
-### Einzeiler (installiert Docker mit)
+### Einzeiler (wget)
 
-Als root. Das Skript installiert bei Bedarf Git, curl, Docker Engine und das Compose-Plugin, legt `.env` an und startet den Stack.
+Als root. Das Skript installiert bei Bedarf Git, wget, Docker Engine und das Compose-Plugin, legt `.env` an und startet den Stack.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/install.sh | bash
+```
+
+Nicht root:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/install.sh | sudo bash
+```
+
+Eigenes Verzeichnis:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/install.sh | sudo env CLOUDORA_DIR=/srv/cloudora bash
 ```
 
 Aus einem bestehenden Checkout:
@@ -225,6 +237,12 @@ npm run typecheck
 In der UI: **Administration → System** zeigt `current` vs. `latest` (GitHub Releases).
 
 CLI (erhält `.env` und Storage):
+
+```bash
+wget -qO- https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/update.sh | bash
+```
+
+oder lokal:
 
 ```bash
 bash scripts/update.sh

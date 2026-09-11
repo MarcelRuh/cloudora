@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
+# Cloudora host-side updater
+#
+# wget -qO- https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/update.sh | bash
 set -euo pipefail
 
 echo "Cloudora update"
 echo "Preserves .env, Docker volumes and ./storage"
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT="${BASH_SOURCE[0]:-$0}"
+if [[ -f "$SCRIPT" && "$SCRIPT" != /dev/fd/* && "$SCRIPT" != "-" ]]; then
+  ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
+else
+  ROOT="${CLOUDORA_DIR:-/opt/cloudora}"
+fi
 cd "$ROOT"
 
 if [[ ! -f .env ]]; then
