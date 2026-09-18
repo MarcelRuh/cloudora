@@ -1,10 +1,10 @@
 # Cloudora
 
-**Self-hosted Cloud Storage & File Explorer** – modern, sicher, Docker-first.
+**Self-hosted Cloud Storage & File Explorer** – native auf Linux, optional Docker.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> Status: **v1.2.6** – Self-Hosted Cloud Storage mit Papierkorb, 2FA, Backup, Self-Update und Extra-Volumes.
+> Status: **v1.3.12** – Self-Hosted Cloud Storage mit Ordnerzugriff, Papierkorb, 2FA, Backup und Self-Update.
 
 Cloudora ist der zentrale Datei- und Cloud-Speicher der gleichen Software-Familie wie [Proxora](https://github.com/MarcelRuh/proxora): dunkles, technisches UI, klare Administration, Self-Hosting hinter Nginx Proxy Manager.
 
@@ -20,17 +20,17 @@ Repository: [github.com/MarcelRuh/cloudora](https://github.com/MarcelRuh/cloudor
 - Optional TOTP-2FA (QR-Code) und Sitzungs-Widerruf
 - RBAC (Administrator / Benutzer) plus granulare Datei-Flags
 - Optionaler Home-Pfad mit serverseitigem Path-Jail (kein Path-Traversal)
-- Datei-Explorer: Grid/List, Breadcrumbs, Drag & Drop, Multi-Select, Kontextmenü, Tastatur
+- Datei-Explorer: nur zugewiesene Ordner (Lesen/Schreiben je Benutzer oder Rolle)
 - Upload mit Fortschritt, Download inkl. Ordner-ZIP (eingeloggt und öffentliche Freigabe)
 - Papierkorb (30 Tage), Wiederherstellen oder endgültig löschen; stündliche Bereinigung abgelaufener Einträge
 - Vorschau für Bilder, PDF, Text, Code, Video und Audio
 - **Formator** – integrierter Editor (Monaco) mit Syntax-Highlighting
-- One-Time-Downloads (Ablauf, Limit, optionales Passwort)
-- Freigaben (Lesen / Download / Bearbeiten, inkl. Ordner)
+- Einmal-Links (Ablauf, Limit, optionales Passwort)
+- Öffentliche Links (Lesen / Download / Bearbeiten, inkl. Ordner)
 - Dashboard, Benutzerverwaltung, Quotas in MB/GB, Audit-Log, Systeminfos inkl. freiem Speicher
 - Datenbank-Backup in der UI (`pg_dump`); Dateien vom Host-Mount sichern
 - Globale Suche (`Ctrl+K`)
-- Docker Compose, PostgreSQL, persistenter Storage, in-app Self-Update
+- Native systemd oder optional Docker Compose; PostgreSQL, persistenter Storage, in-app Self-Update
 
 ## Screenshots
 
@@ -52,7 +52,7 @@ Nach dem Start: Login → Dashboard → Dateien.
 
 ### Einzeiler (wget)
 
-Als root. Das Skript installiert bei Bedarf Git, wget, Docker Engine und das Compose-Plugin, legt `.env` an und startet den Stack.
+Als root. Das Skript installiert Node.js 22, PostgreSQL und systemd, legt `.env` an und startet Cloudora nativ.
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/install.sh | bash
@@ -85,7 +85,13 @@ git clone https://github.com/MarcelRuh/cloudora.git
 cd cloudora
 cp .env.example .env
 # SESSION_SECRET, ENCRYPTION_KEY und BOOTSTRAP_ADMIN_PASSWORD setzen
-docker compose up -d --build
+sudo bash scripts/install.sh
+```
+
+Docker bleibt optional:
+
+```bash
+sudo env CLOUDORA_INSTALL_MODE=docker bash scripts/install.sh
 ```
 
 Anschließend:
@@ -102,17 +108,19 @@ Siehe [`.env.example`](./.env.example). Wichtige Variablen:
 
 | Variable | Bedeutung |
 | --- | --- |
-| `DATABASE_URL` | PostgreSQL-URL (in Compose automatisch gesetzt) |
+| `DATABASE_URL` | PostgreSQL-URL |
 | `SESSION_SECRET` | mind. 32 Zeichen |
 | `ENCRYPTION_KEY` | mind. 32 Zeichen |
-| `CLOUDORA_HOST_STORAGE` | Host-Pfad für Dateien (lokaler Ordner, extra Disk, NFS-Mount). Standard `./storage` |
-| `CLOUDORA_STORAGE_PATH` | Pfad im Container, Standard `/storage` |
+| `CLOUDORA_RUNTIME` | `native` (Standard) oder `docker` |
+| `CLOUDORA_STORAGE_PATH` | Absoluter App-Speicher (native z. B. `/opt/cloudora/storage`) |
+| `CLOUDORA_HOST_STORAGE` | Anzeige-/Compose-Hostpfad, Standard `./storage` |
 | `CLOUDORA_USERS_DIR` | Unterordner für Benutzer-Homes, Standard `users` |
-| `CLOUDORA_SHARED_DIR` | Geteilter Ordner, Standard `shared` |
+| `CLOUDORA_SHARED_DIR` | Interner Shared-Ordner, Standard `shared` |
 | `PUBLIC_URL` | Öffentliche URL hinter dem Reverse Proxy |
 | `TRUST_PROXY` | `true` hinter Nginx Proxy Manager |
 | `BOOTSTRAP_ADMIN_*` | Initialer Administrator (nur Seed) |
 | `MAX_UPLOAD_BYTES` | hartes Upload-Limit |
+| `CLOUDORA_INSTALL_DIR` | Checkout-Pfad für Self-Update (native z. B. `/opt/cloudora`) |
 
 Keine Secrets in Git committen.
 
@@ -147,6 +155,15 @@ In NPM:
 3. Websocket nicht erforderlich
 4. `PUBLIC_URL=https://cloud.example.com` setzen
 5. `TRUST_PROXY=true`
+6. Unter Advanced für große Downloads:
+
+```nginx
+client_max_body_size 0;
+proxy_request_buffering off;
+proxy_buffering off;
+proxy_read_timeout 3600s;
+proxy_send_timeout 3600s;
+```
 
 ## Storage Configuration
 
@@ -166,7 +183,7 @@ Danach Container neu erzeugen, damit der Bind-Mount greift:
 docker compose up -d
 ```
 
-Zusätzliche Host-Ordner in der UI: **Administration → Speicher → Host-Ordner**. `/mnt`, `/media` und `/srv` sind im Container schreibbar — Ordner anlegen ohne Neustart. Nur ungewöhnliche Pfade (z. B. unter `/home`) schreiben noch `docker-compose.cloudora-volumes.yml`. `/host` bleibt nur zum Durchsuchen (lesen).
+`/mnt`, `/media` und `/srv` sind im Container schreibbar. Im Explorer erscheint `/mnt` (z. B. `/mnt/cloudora`) ohne Extra-Volume. `/host` bleibt nur zum Durchsuchen (lesen).
 
 Manuell weiterhin: `docker-compose.override.example.yml` nach `docker-compose.override.yml` kopieren.
 
@@ -198,7 +215,7 @@ Administratoren verwalten unter **Administration → Benutzer**:
 - Rolle
 - Home-Pfad an/aus + Pfad
 - Speicherlimit (MB/GB, leer = unbegrenzt)
-- Upload / Download / Löschen / Bearbeiten / Freigaben / One-Time-Downloads
+- Upload / Download / Löschen / Bearbeiten / öffentliche Links / Einmal-Links
 
 Deaktivierte Benutzer können sich nicht anmelden. Home-Pfad-Benutzer können serverseitig nicht aus ihrem Verzeichnis ausbrechen.
 
@@ -236,7 +253,7 @@ npm run typecheck
 
 ## Updating
 
-In der UI (empfohlen): **Administration → System → Jetzt aktualisieren**. Zeigt `current → latest`, Changelog und Fortschritt. Der Sidecar baut den Stack neu; `.env` und Storage bleiben.
+In der UI (empfohlen): **Administration → System → Jetzt aktualisieren**. Zeigt `current → latest`, Changelog und Fortschritt. Native startet den systemd-Dienst neu; Docker nutzt den Sidecar. `.env` und Storage bleiben.
 
 CLI (erhält `.env` und Storage):
 
@@ -250,14 +267,14 @@ oder lokal:
 bash scripts/update.sh
 ```
 
-oder:
+Docker optional:
 
 ```bash
 git pull
 docker compose up -d --build
 ```
 
-Prisma-Migrationen laufen im Container-Entrypoint automatisch.
+Prisma-Migrationen laufen beim Start (native via Update-Skript, Docker im Entrypoint).
 
 ## Backup
 

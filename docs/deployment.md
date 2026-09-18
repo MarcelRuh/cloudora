@@ -1,24 +1,37 @@
 # Deployment
 
-## Install script
+Native systemd ist der Standard. Docker Compose bleibt optional.
 
-`scripts/install.sh` installs Git, wget, **Docker Engine and Compose** when they are missing, then starts the stack. Run as root:
+## Native (systemd)
+
+`scripts/install.sh` installiert Node.js 22, PostgreSQL und eine `cloudora.service`. Als root:
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/install.sh | bash
 ```
 
-From a checkout:
+Aus einem Checkout:
 
 ```bash
 sudo bash scripts/install.sh
 ```
 
-The app container does **not** get `docker.sock`. Self-update is performed by `cloudora-updater` (sidecar) after the UI writes a signal file.
+Setze `CLOUDORA_INSTALL_DIR` auf das Checkout (Standard: aktuelles Repo oder `/opt/cloudora`). Das steht in `.env` und wird für Self-Update gebraucht.
 
-Set `CLOUDORA_INSTALL_DIR` to the host checkout (default `/opt/cloudora`). The wget installer writes that into `.env`.
+Self-Update in der UI ruft `scripts/self-update-apply.sh` auf, baut nativ und macht `systemctl restart cloudora`.
+
+```bash
+systemctl status cloudora
+curl -sS http://127.0.0.1:3000/api/health
+```
 
 ## Docker Compose
+
+```bash
+sudo env CLOUDORA_INSTALL_MODE=docker bash scripts/install.sh
+```
+
+Oder manuell:
 
 ```bash
 cp .env.example .env
@@ -27,30 +40,41 @@ docker compose up -d --build
 
 Production overlay: `docker-compose.prod.yml`.
 
-Set `PUBLIC_URL` to the NPM hostname (`https://cloud.example.com`). Keep `TRUST_PROXY=true`.
+Der App-Container bekommt **kein** `docker.sock`. Self-Update läuft über den Sidecar `cloudora-updater`, nachdem die UI eine Signaldatei schreibt.
 
-The container:
+Setze `PUBLIC_URL` auf den NPM-Hostnamen (`https://cloud.example.com`). `TRUST_PROXY=true` behalten.
 
-1. Creates `{CLOUDORA_STORAGE_PATH}/{users,shared}` (ordnernamen konfigurierbar)
-2. Runs `prisma migrate deploy`
-3. Seeds the bootstrap admin if missing
-4. Starts Next.js on port 3000
+Der Container:
+
+1. Legt `{CLOUDORA_STORAGE_PATH}/{users,shared}` an (Ordnernamen konfigurierbar)
+2. Führt `prisma migrate deploy` aus
+3. Seedet den Bootstrap-Admin falls fehlend
+4. Startet Next.js auf Port 3000
 
 ## Nginx Proxy Manager
 
 - Scheme: http
-- Forward hostname: `cloudora` (compose service) or the host IP
+- Forward hostname: Host-IP (native) oder `cloudora` (Compose-Service)
 - Forward port: `3000`
 - Websockets: off
-- SSL: NPM certificate
+- SSL: NPM-Zertifikat
 - HTTP/2 optional
+- Advanced:
+
+```nginx
+client_max_body_size 0;
+proxy_request_buffering off;
+proxy_buffering off;
+proxy_read_timeout 3600s;
+proxy_send_timeout 3600s;
+```
 
 ## Persistence
 
-| Data | Location |
-| --- | --- |
-| Database | Docker volume `postgres_data` |
-| Files | `${CLOUDORA_HOST_STORAGE}` → `${CLOUDORA_STORAGE_PATH}` |
-| Secrets | `.env` |
+| Daten | Native | Docker |
+| --- | --- | --- |
+| Datenbank | lokale PostgreSQL | Volume `postgres_data` |
+| Dateien | `${CLOUDORA_STORAGE_PATH}` | `${CLOUDORA_HOST_STORAGE}` → `${CLOUDORA_STORAGE_PATH}` |
+| Secrets | `.env` | `.env` |
 
-Do not bind-mount over `/app`. Updates rebuild the image and keep volumes + `.env`.
+Nicht über den App-Code bind-mounten. Updates ersetzen den Code, Volumes und `.env` bleiben.

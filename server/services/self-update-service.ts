@@ -24,6 +24,13 @@ import {
   fetchGithubPackageVersion,
 } from "@/server/services/github-revision";
 import {
+  resolveSelfUpdateMode,
+  selfUpdateReadyMessage,
+  selfUpdateUnavailableMessage,
+  type SelfUpdateMode,
+  type SelfUpdateSidecar,
+} from "@/server/services/self-update-mode";
+import {
   mergeProgress,
   parseUpdaterLogs,
   readComposeLogsFromDir,
@@ -35,8 +42,7 @@ import {
 const execFileAsync = promisify(execFile);
 const APPLY_TIMEOUT_MS = 20 * 60 * 1000;
 
-export type SelfUpdateMode = "compose" | "none";
-export type SelfUpdateSidecar = "ready" | "missing" | "host";
+export type { SelfUpdateMode, SelfUpdateSidecar };
 
 export type SelfUpdateStatus = {
   enabled: boolean;
@@ -117,10 +123,11 @@ export async function getSelfUpdateStatus(): Promise<SelfUpdateStatus> {
   const sourceDir = mount && existsSync(path.join(mount, "package.json")) ? mount : null;
   const sourceVersion = sourceDir ? readSourceVersion(mount) : null;
   const enabled = Boolean(opts.installDirHost) || sidecar === "ready" || sidecar === "host";
+  const mode = resolveSelfUpdateMode(sidecar, enabled);
 
   const base: SelfUpdateStatus = {
     enabled,
-    mode: enabled ? "compose" : "none",
+    mode,
     sidecar,
     currentVersion: APP_VERSION,
     sourceVersion,
@@ -128,12 +135,7 @@ export async function getSelfUpdateStatus(): Promise<SelfUpdateStatus> {
     localRevision: readLocalRevision(progressDir()),
     remoteRevision: null,
     updateAvailable: false,
-    message:
-      sidecar === "missing"
-        ? "Self-Update-Sidecar fehlt. Stack mit docker compose up -d neu erzeugen."
-        : enabled
-          ? "Prüfe GitHub…"
-          : "Self-Update nicht verfügbar. CLOUDORA_INSTALL_DIR auf den Compose-Installationspfad setzen.",
+    message: enabled && sidecar !== "missing" ? "Prüfe GitHub…" : selfUpdateUnavailableMessage(sidecar),
     installDir: opts.installDirHost ?? mount,
     repo: opts.repo,
     branch: opts.branch,
@@ -199,15 +201,13 @@ export async function getSelfUpdateStatus(): Promise<SelfUpdateStatus> {
     updateAvailable,
     targetVersion,
     changelog,
-    message: updating
-      ? "Update läuft…"
-      : shaError && !updateAvailable
-        ? `GitHub-Prüfung fehlgeschlagen: ${shaError}`
-        : updateAvailable
-          ? targetVersion
-            ? `Update verfügbar — ${APP_VERSION} → ${targetVersion}`
-            : "Update von GitHub verfügbar"
-          : "Aktuell",
+    message: selfUpdateReadyMessage({
+      updating,
+      updateAvailable,
+      currentVersion: APP_VERSION,
+      targetVersion,
+      shaError,
+    }),
   });
 }
 
@@ -221,7 +221,7 @@ async function withProgress(status: SelfUpdateStatus): Promise<SelfUpdateStatus>
 
 export async function applySelfUpdate(): Promise<{ ok: boolean; message: string; mode: SelfUpdateMode }> {
   if (applyInFlight || isUpdaterRunning()) {
-    return { ok: false, message: "Update läuft bereits", mode: "compose" };
+    return { ok: false, message: "Update läuft bereits", mode: resolveSelfUpdateMode(sidecarState(), true) };
   }
   const status = await getSelfUpdateStatus();
   if (!status.enabled) return { ok: false, message: status.message, mode: status.mode };
@@ -236,7 +236,7 @@ export async function applySelfUpdate(): Promise<{ ok: boolean; message: string;
   const hostDir = opts.installDirHost ?? opts.installDirMount;
   const mount = opts.installDirMount;
   if (!hostDir || !mount) {
-    return { ok: false, message: "CLOUDORA_INSTALL_DIR ist nicht gesetzt", mode: "compose" };
+    return { ok: false, message: "CLOUDORA_INSTALL_DIR ist nicht gesetzt", mode: "native" };
   }
 
   applyInFlight = true;
@@ -253,7 +253,7 @@ export async function applySelfUpdate(): Promise<{ ok: boolean; message: string;
 async function applyOnHost(installMount: string, repo: string, branch: string, tag: string | null) {
   const scriptPath = path.join(installMount, "scripts", "self-update-apply.sh");
   if (!existsSync(scriptPath)) {
-    return { ok: false, message: "self-update-apply.sh fehlt", mode: "compose" as const };
+    return { ok: false, message: "self-update-apply.sh fehlt", mode: "native" as const };
   }
   try {
     const { stdout, stderr } = await execFileAsync("sh", [scriptPath], {
@@ -263,18 +263,19 @@ async function applyOnHost(installMount: string, repo: string, branch: string, t
         CLOUDORA_REPO: repo,
         CLOUDORA_BRANCH: branch,
         CLOUDORA_RELEASE_TAG: tag ?? "",
-        CLOUDORA_SKIP_COMPOSE: existsSync("/.dockerenv") ? "0" : "1",
+        CLOUDORA_SKIP_COMPOSE: "0",
+        CLOUDORA_RUNTIME: "native",
       },
       timeout: APPLY_TIMEOUT_MS,
       maxBuffer: 4 * 1024 * 1024,
     });
     const tail = `${stdout}\n${stderr}`.trim().split("\n").slice(-8).join("\n");
-    return { ok: true, mode: "compose" as const, message: `Dateien synchronisiert.\n${tail}` };
+    return { ok: true, mode: "native" as const, message: `Dateien synchronisiert.\n${tail}` };
   } catch (error) {
     const err = error as { message?: string; stdout?: string; stderr?: string };
     return {
       ok: false,
-      mode: "compose" as const,
+      mode: "native" as const,
       message: [err.message, err.stderr, err.stdout].filter(Boolean).join("\n") || String(error),
     };
   }
@@ -285,12 +286,12 @@ function applyViaSignal(hostDir: string, repo: string, tag: string | null) {
   if (!isSignalDirReady(signalDir)) {
     return {
       ok: false,
-      mode: "compose" as const,
-      message: "Self-Update-Sidecar fehlt. Stack mit docker compose up -d neu erzeugen.",
+      mode: "docker" as const,
+      message: "Self-Update-Sidecar fehlt. Docker-Stack mit docker compose up -d neu erzeugen.",
     };
   }
   if (isUpdateBusyFromSignal(signalDir)) {
-    return { ok: false, mode: "compose" as const, message: "Update läuft bereits" };
+    return { ok: false, mode: "docker" as const, message: "Update läuft bereits" };
   }
   try {
     writeUpdateTarget(signalDir, tag);
@@ -298,13 +299,13 @@ function applyViaSignal(hostDir: string, repo: string, tag: string | null) {
     logger.info({ hostDir, repo, tag, signalDir }, "Cloudora update requested via sidecar");
     return {
       ok: true,
-      mode: "compose" as const,
+      mode: "docker" as const,
       message: "Updater gestartet. Cloudora wird neu gebaut und kommt gleich zurück.",
     };
   } catch (error) {
     return {
       ok: false,
-      mode: "compose" as const,
+      mode: "docker" as const,
       message: error instanceof Error ? error.message : String(error),
     };
   }

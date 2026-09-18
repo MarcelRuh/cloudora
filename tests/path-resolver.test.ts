@@ -54,4 +54,85 @@ describe("resolveScopedPath jail", () => {
     expect(childVirtual("/docs", "file.txt")).toBe("/docs/file.txt");
     expect(() => childVirtual("/docs", "../x")).toThrow(AppError);
   });
+
+  it("resolves a named share via extraRoots, not the jail", () => {
+    const mnt = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-mnt-"));
+    fs.mkdirSync(path.join(mnt, "cloudora"));
+    const resolved = resolveScopedPath(
+      {
+        kind: "global",
+        jailRoot: jail,
+        catalogOnly: true,
+        extraRoots: [
+          {
+            virtualRoot: "/daten",
+            absRoot: mnt,
+            writable: true,
+            label: "Daten",
+            kind: "share",
+          },
+        ],
+        rootLabel: "Dateien",
+      },
+      "/daten/cloudora",
+    );
+    expect(resolved.absPath).toBe(fs.realpathSync(path.join(mnt, "cloudora")));
+    expect(resolved.name).toBe("cloudora");
+  });
+
+  it("rejects catalog paths that are not shares", () => {
+    expect(() =>
+      resolveScopedPath({ kind: "global", jailRoot: jail, catalogOnly: true, extraRoots: [], rootLabel: "Dateien" }, "/etc"),
+    ).toThrow(AppError);
+  });
+
+  it("allows a nested extra root without parent folders", () => {
+    const mnt = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-nested-"));
+    fs.mkdirSync(path.join(mnt, "shared", "test"), { recursive: true });
+    const scope = {
+      kind: "global" as const,
+      jailRoot: jail,
+      catalogOnly: true,
+      extraRoots: [
+        {
+          virtualRoot: "/cloudora/shared/test",
+          absRoot: path.join(mnt, "shared", "test"),
+          writable: true,
+          label: "test",
+          kind: "share" as const,
+        },
+      ],
+      rootLabel: "Dateien",
+    };
+    const resolved = resolveScopedPath(scope, "/cloudora/shared/test");
+    expect(resolved.absPath).toBe(fs.realpathSync(path.join(mnt, "shared", "test")));
+    expect(resolved.name).toBe("test");
+    expect(() => resolveScopedPath(scope, "/cloudora")).toThrow(AppError);
+    expect(() => resolveScopedPath(scope, "/cloudora/shared")).toThrow(AppError);
+  });
+
+  it("resolves an extra root that does not exist yet", () => {
+    const mnt = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-missing-"));
+    const absRoot = path.join(mnt, "users", "test");
+    const resolved = resolveScopedPath(
+      {
+        kind: "global",
+        jailRoot: jail,
+        catalogOnly: true,
+        extraRoots: [
+          {
+            virtualRoot: "/Home",
+            absRoot,
+            writable: true,
+            label: "Home",
+            kind: "home",
+          },
+        ],
+        rootLabel: "Dateien",
+      },
+      "/Home",
+    );
+    expect(resolved.absPath).toBe(path.resolve(absRoot));
+    expect(resolved.name).toBe("Home");
+  });
 });

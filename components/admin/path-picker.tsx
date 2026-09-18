@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { SegmentTabs } from "@/components/ui/tabs";
 import { api, ApiRequestError } from "@/lib/api";
-import { isInsideStorageRoot, toConfiguredFromAbsolute } from "@/lib/posix-path";
+import { toConfiguredFromAbsolute } from "@/lib/posix-path";
 import { cn } from "@/lib/utils";
 
 type Browse = {
@@ -115,82 +115,22 @@ export function PathLiveStatus({ value }: { value: string }) {
 
   const status = liveStatusText(data);
   const statusClass = liveStatusClass(data);
-
-  return (
-    <div className="space-y-0.5 text-xs">
-      <p className={statusClass}>{status}</p>
-      <MountHint
-        inside={data.insideVolume}
-        hostStorage={data.hostStorage}
-        hostBrowse={data.hostBrowse}
-        linked={data.linked}
-        live={data.live}
-      />
-    </div>
-  );
+  if (!status) return isFetching ? <p className="text-xs text-muted-foreground">Prüfe Pfad…</p> : null;
+  return <p className={`text-xs ${statusClass}`}>{status}</p>;
 }
 
-function liveStatusText(data: Inspect): string {
-  if (data.linked && data.live && data.writable) return "Vorhanden und beschreibbar";
-  if (data.linked && data.live && data.exists && !data.writable) return "Gemountet, aber nicht beschreibbar — Rechte auf dem Host prüfen.";
-  if (data.linked && !data.live) {
-    return data.exists
-      ? "Als Volume eingetragen — nach dem Übernehmen (Container-Neustart) schreibbar."
-      : "Als Volume eingetragen — Docker legt den Ordner auf dem Host beim Mounten an.";
-  }
-  if (data.hostBrowse && data.exists && data.isDirectory) {
-    return "Auf dem Host vorhanden. Speichern mountet den Ordner schreibbar (nicht über /host).";
-  }
-  if (data.hostBrowse && !data.exists) {
-    return "Existiert auf dem Host noch nicht — Docker legt den Ordner beim Speichern an.";
-  }
+function liveStatusText(data: Inspect): string | null {
   if (!data.exists) return "Existiert noch nicht — wird beim Speichern angelegt, falls berechtigt.";
   if (!data.isDirectory) return "Kein Verzeichnis";
-  if (!data.writable) return "Nicht beschreibbar";
-  return "Vorhanden und beschreibbar";
+  if (!data.writable) return "Vorhanden, nicht beschreibbar";
+  return null;
 }
 
 function liveStatusClass(data: Inspect): string {
-  if (data.linked && data.live && data.writable) return "text-success";
-  if (!data.exists && !data.hostBrowse && !data.linked) return "text-warning";
-  if (data.exists && !data.isDirectory) return "text-destructive";
-  if (data.linked && data.live && !data.writable) return "text-warning";
-  if (data.hostBrowse || (data.linked && !data.live)) return "text-warning";
+  if (!data.exists) return "text-muted-foreground";
+  if (!data.isDirectory) return "text-destructive";
   if (!data.writable) return "text-warning";
   return "text-success";
-}
-
-export function MountHint({
-  inside,
-  hostStorage,
-  hostBrowse,
-  linked,
-  live,
-}: {
-  inside: boolean;
-  hostStorage?: string;
-  hostBrowse?: boolean;
-  linked?: boolean;
-  live?: boolean;
-}) {
-  if (inside || (linked && live)) {
-    return <p className="text-xs text-success">Im Docker-Volume{hostStorage ? ` (${hostStorage})` : ""}</p>;
-  }
-  if (linked && !live) {
-    return <p className="text-xs text-warning">Bind-Mount ausstehend — Speichern bzw. Volumes übernehmen startet den Container neu.</p>;
-  }
-  if (hostBrowse) {
-    return (
-      <p className="text-xs text-warning">
-        Host-Pfad (über /host nur lesbar). Speichern linkt ihn als schreibbares Volume.
-      </p>
-    );
-  }
-  return (
-    <p className="text-xs text-warning">
-      Nicht gemountet — außerhalb des Volumes, Daten überleben ein Recreate nicht zuverlässig.
-    </p>
-  );
 }
 
 export function PathPickerField({
@@ -337,7 +277,6 @@ function LinuxFolderBrowser({
   const atRoot = current === "/";
   const activeTab = tabForPath(current, storageRoot);
   const shortcutByPath = new Map((data?.shortcuts ?? []).map((item) => [item.path, item]));
-  const insideVolume = data?.insideVolume ?? isInsideStorageRoot(current, storageRoot);
   const visible = (data?.entries ?? []).filter((entry) =>
     entry.name.toLowerCase().includes(filter.trim().toLowerCase()),
   );
@@ -364,7 +303,13 @@ function LinuxFolderBrowser({
   const choose = (absPath: string) => {
     if (absPath === "/") return;
     const host = (data?.hostStorage || hostStorage || "").replace(/\\/g, "/").replace(/\/+$/, "");
-    if (host && host.startsWith("/") && (absPath === host || absPath.startsWith(`${host}/`))) {
+    const remapHostStorage = !storageRootProp;
+    if (
+      remapHostStorage &&
+      host &&
+      host.startsWith("/") &&
+      (absPath === host || absPath.startsWith(`${host}/`))
+    ) {
       const rest = absPath === host ? "" : absPath.slice(host.length + 1);
       if (!rest) {
         onSelect(preferRelative ? volumeRootRelative || "shared" : storageRoot);
@@ -628,9 +573,9 @@ function LinuxFolderBrowser({
               <p className="text-[11px] text-muted-foreground">
                 Inhalt von / — wähle einen Unterordner (z. B. /mnt oder /home). Die Wurzel selbst kann nicht gelinkt werden.
               </p>
-            ) : (
-              <MountHint inside={insideVolume} hostStorage={data?.hostStorage ?? hostStorage} />
-            )}
+            ) : data?.writable === false ? (
+              <p className="text-[11px] text-warning">Ordner vorhanden, aber nicht beschreibbar.</p>
+            ) : null}
             {preferRelative && !atRoot ? (
               <p className="font-mono text-[11px] text-muted-foreground">
                 Wird {takenAs === current ? "absolut" : `relativ als ${takenAs}`} übernommen.

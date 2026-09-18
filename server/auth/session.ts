@@ -5,9 +5,10 @@ import type { SessionUser } from "@/lib/types";
 import { prisma } from "@/server/db";
 import { getEnv } from "@/server/env";
 import { COOKIE_NAME, clearSessionCookie, setSessionCookie } from "@/server/http";
-import { hashToken, randomToken } from "@/server/crypto";
+import { hashWithSecret, randomToken } from "@/server/crypto";
 import { hashPassword, verifyPassword } from "@/server/auth/password";
 import { hydrateStoragePaths } from "@/server/storage/config";
+import { hydrateFolderShares } from "@/server/storage/folder-shares";
 
 function toNumber(value: bigint | number | null | undefined): number {
   if (value == null) return 0;
@@ -63,6 +64,10 @@ export function toSessionUser(user: {
 
 const userInclude = { role: true } as const;
 
+export function hashSessionToken(token: string): string {
+  return hashWithSecret(token, getEnv().sessionSecret);
+}
+
 export async function createSession(userId: string, ip: string | null, userAgent: string | null): Promise<string> {
   const env = getEnv();
   const token = randomToken(32);
@@ -70,7 +75,7 @@ export async function createSession(userId: string, ip: string | null, userAgent
   await prisma.session.create({
     data: {
       userId,
-      tokenHash: hashToken(token),
+      tokenHash: hashSessionToken(token),
       ip,
       userAgent,
       expiresAt,
@@ -83,17 +88,18 @@ export async function createSession(userId: string, ip: string | null, userAgent
 export async function destroySession(): Promise<void> {
   const token = (await cookies()).get(COOKIE_NAME)?.value;
   if (token) {
-    await prisma.session.deleteMany({ where: { tokenHash: hashToken(token) } });
+    await prisma.session.deleteMany({ where: { tokenHash: hashSessionToken(token) } });
   }
   await clearSessionCookie();
 }
 
 export async function getSession(): Promise<SessionUser | null> {
   await hydrateStoragePaths();
+  await hydrateFolderShares();
   const token = (await cookies()).get(COOKIE_NAME)?.value;
   if (!token) return null;
   const row = await prisma.session.findUnique({
-    where: { tokenHash: hashToken(token) },
+    where: { tokenHash: hashSessionToken(token) },
     include: { user: { include: userInclude } },
   });
   if (!row || row.expiresAt < new Date()) {

@@ -1,6 +1,4 @@
 import { statfs } from "node:fs/promises";
-import path from "node:path";
-import { extraVolumeLiveRoot, type ExtraVolume } from "@/server/storage/extra-volumes";
 
 export type VolumeStats = {
   totalBytes: number;
@@ -63,7 +61,7 @@ function fingerprint(stats: VolumeStats): string {
 export async function listStorageDisks(input: {
   storagePath: string;
   hostStorage: string;
-  extraVolumes: ExtraVolume[];
+  extraPaths?: Array<{ id: string; name: string; absPath: string }>;
 }): Promise<DiskSnapshot[]> {
   const disks: DiskSnapshot[] = [];
   const seen = new Set<string>();
@@ -84,9 +82,8 @@ export async function listStorageDisks(input: {
   };
 
   await push("storage", "Cloudora", input.storagePath, input.hostStorage || undefined);
-  for (const vol of input.extraVolumes) {
-    const live = extraVolumeLiveRoot(vol, input.storagePath);
-    await push(vol.id, vol.name, live, vol.hostPath);
+  for (const extra of input.extraPaths ?? []) {
+    await push(extra.id, extra.name, extra.absPath, extra.absPath);
   }
   return disks;
 }

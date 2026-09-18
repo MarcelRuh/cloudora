@@ -6,10 +6,22 @@ const FORBIDDEN_NAMES = new Set(["", ".", ".."]);
 
 export type StorageScopeKind = "home" | "shared" | "global";
 
+export type ExtraRoot = {
+  virtualRoot: string;
+  absRoot: string;
+  writable: boolean;
+  label: string;
+  kind: "share" | "home";
+};
+
 export type StorageScope = {
   kind: StorageScopeKind;
   /** Absolute jail root. All resolved paths must stay inside this directory. */
   jailRoot: string;
+  /** Named trees (folder shares / home) mapped from virtual root → host path. */
+  extraRoots?: ExtraRoot[];
+  /** If true, only `/` and extraRoots are reachable — not the jail listing. */
+  catalogOnly?: boolean;
   /** Label shown as the first breadcrumb. */
   rootLabel: string;
 };
@@ -112,6 +124,38 @@ function realExistingAncestor(absPath: string, jailRoot: string): string {
   return jailRoot;
 }
 
+export function extraRootFor(scope: StorageScope, virtualPath: string): ExtraRoot | null {
+  const normalized = normalizeVirtualPath(virtualPath);
+  const extras = scope.extraRoots ?? [];
+  const matches = extras.filter(
+    (root) => normalized === root.virtualRoot || normalized.startsWith(`${root.virtualRoot}/`),
+  );
+  matches.sort((a, b) => b.virtualRoot.length - a.virtualRoot.length);
+  return matches[0] ?? null;
+}
+
+export function isExtraRootVirtual(scope: StorageScope, virtualPath: string): boolean {
+  const normalized = normalizeVirtualPath(virtualPath);
+  return (scope.extraRoots ?? []).some((root) => root.virtualRoot === normalized);
+}
+
+export function assertScopeWritable(scope: StorageScope, virtualPath: string): void {
+  const normalized = normalizeVirtualPath(virtualPath);
+  if (normalized === "/") {
+    throw new AppError("FORBIDDEN", "Im Stammverzeichnis können keine Dateien angelegt werden.", 400);
+  }
+  if (isExtraRootVirtual(scope, normalized)) {
+    throw new AppError("FORBIDDEN", "Zugewiesene Ordner selbst können nicht verändert werden.", 400);
+  }
+  const extra = extraRootFor(scope, normalized);
+  if (!extra) {
+    throw new AppError("FORBIDDEN", "Zugriff außerhalb des erlaubten Speicherbereichs.", 403);
+  }
+  if (!extra.writable) {
+    throw new AppError("FORBIDDEN", "Dieser Ordner ist nur lesbar.", 403);
+  }
+}
+
 export function resolveScopedPath(scope: StorageScope, virtualPath: string): ResolvedPath {
   const jailRoot = path.resolve(scope.jailRoot);
   if (!fs.existsSync(/* turbopackIgnore: true */ jailRoot)) {
@@ -122,6 +166,62 @@ export function resolveScopedPath(scope: StorageScope, virtualPath: string): Res
   if (normalized === "/.trash" || normalized.startsWith("/.trash/")) {
     throw new AppError("FORBIDDEN", "Der Papierkorb ist nicht direkt erreichbar.", 403);
   }
+
+  const extra = extraRootFor(scope, normalized);
+  if (extra) {
+    const extraResolved = path.resolve(extra.absRoot);
+    const extraExists = fs.existsSync(/* turbopackIgnore: true */ extraResolved);
+    const extraReal = extraExists ? realOrSelf(extraResolved) : extraResolved;
+    const relative = normalized === extra.virtualRoot ? "" : normalized.slice(extra.virtualRoot.length + 1);
+    const absPath = relative ? path.resolve(extraReal, relative) : extraReal;
+    if (!isInsideRoot(extraReal, absPath)) {
+      throw new AppError("PATH_TRAVERSAL", "Zugriff außerhalb des erlaubten Speicherbereichs.", 403);
+    }
+    // Missing extra roots always have an existing parent *outside* the root.
+    // That is not traversal — the folder simply has not been created yet.
+    if (extraExists) {
+      const ancestor = realExistingAncestor(absPath, extraReal);
+      if (!isInsideRoot(extraReal, ancestor)) {
+        throw new AppError("PATH_TRAVERSAL", "Zugriff außerhalb des erlaubten Speicherbereichs.", 403);
+      }
+    }
+    const name =
+      normalized === extra.virtualRoot ? extra.label : virtualBasename(normalized) || extra.label;
+    if (fs.existsSync(/* turbopackIgnore: true */ absPath)) {
+      const real = realOrSelf(absPath);
+      if (!isInsideRoot(extraReal, real)) {
+        throw new AppError("PATH_TRAVERSAL", "Zugriff außerhalb des erlaubten Speicherbereichs.", 403);
+      }
+      return {
+        virtualPath: normalized,
+        absPath: real,
+        name,
+        parentVirtual: virtualDirname(normalized),
+        scope: { ...scope, jailRoot: jailReal },
+      };
+    }
+    return {
+      virtualPath: normalized,
+      absPath,
+      name,
+      parentVirtual: virtualDirname(normalized),
+      scope: { ...scope, jailRoot: jailReal },
+    };
+  }
+
+  if (scope.catalogOnly) {
+    if (normalized === "/") {
+      return {
+        virtualPath: "/",
+        absPath: jailReal,
+        name: scope.rootLabel,
+        parentVirtual: "/",
+        scope: { ...scope, jailRoot: jailReal },
+      };
+    }
+    throw new AppError("FORBIDDEN", "Dieser Ordner ist nicht freigegeben.", 403);
+  }
+
   const relative = normalized === "/" ? "" : normalized.slice(1);
   const absPath = path.resolve(jailReal, relative);
   if (!isInsideRoot(jailReal, absPath)) {

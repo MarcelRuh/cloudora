@@ -9,6 +9,7 @@ import { APP_VERSION } from "@/lib/version";
 
 type SelfUpdateStatus = {
   enabled: boolean;
+  mode?: "native" | "docker" | "none";
   sidecar: "ready" | "missing" | "host";
   currentVersion: string;
   remoteVersion: string | null;
@@ -32,20 +33,28 @@ const STEP_LABELS: Record<string, string> = {
   start: "Start",
   resolve: "GitHub-Revision ermitteln",
   sync: "Quellen synchronisieren",
-  build: "Stack neu bauen",
-  buildWeb: "Image bauen",
+  build: "Bauen",
+  buildWeb: "Anwendung bauen",
+  deps: "Abhängigkeiten",
+  migrate: "Datenbank",
   export: "Image exportieren",
-  startWeb: "Container starten",
+  startWeb: "Neustart",
   finalize: "Abschluss",
   done: "Fertig",
   error: "Fehler",
   apply: "Aktualisieren",
 };
 
+const MODE_LABELS: Record<NonNullable<SelfUpdateStatus["mode"]>, string> = {
+  native: "Native (systemd)",
+  docker: "Docker Compose",
+  none: "Nicht konfiguriert",
+};
+
 const SIDECAR_LABELS = {
-  ready: "Sidecar bereit",
-  missing: "Sidecar fehlt — Stack neu starten",
-  host: "Host (ohne Docker)",
+  ready: "Docker-Sidecar bereit",
+  missing: "Docker-Sidecar fehlt",
+  host: "systemd auf dem Host",
 };
 
 function shortRev(value: string | null | undefined): string {
@@ -89,8 +98,11 @@ export function SelfUpdateCard() {
   const handleApply = async () => {
     const from = status?.currentVersion ?? APP_VERSION;
     const to = status?.targetVersion ?? "latest";
+    const native = status?.mode === "native" || status?.sidecar === "host";
     const ok = window.confirm(
-      `Cloudora aktualisieren?\n\nHolt den Stand von GitHub und baut den Stack neu. ${from} → ${to}.\nLokale Änderungen außer .env und Storage werden überschrieben.`,
+      native
+        ? `Cloudora aktualisieren?\n\nHolt den Stand von GitHub, baut nativ und startet den systemd-Dienst neu. ${from} → ${to}.\nLokale Änderungen außer .env und Storage werden überschrieben.`
+        : `Cloudora aktualisieren?\n\nHolt den Stand von GitHub und baut den Docker-Stack neu. ${from} → ${to}.\nLokale Änderungen außer .env und Storage werden überschrieben.`,
     );
     if (!ok) return;
     setBusy(true);
@@ -161,11 +173,13 @@ export function SelfUpdateCard() {
             </dd>
             <dt>Installationspfad</dt>
             <dd>{status.installDir ?? "—"}</dd>
+            <dt>Betrieb</dt>
+            <dd>{MODE_LABELS[status.mode ?? (status.sidecar === "host" ? "native" : status.sidecar === "ready" ? "docker" : "none")]}</dd>
             <dt>Lokal</dt>
             <dd className="font-mono">{shortRev(status.localRevision)}</dd>
             <dt>Remote</dt>
             <dd className="font-mono">{shortRev(status.remoteRevision)}</dd>
-            <dt>Sidecar</dt>
+            <dt>Updater</dt>
             <dd>{SIDECAR_LABELS[status.sidecar]}</dd>
           </dl>
           {showProgress ? (

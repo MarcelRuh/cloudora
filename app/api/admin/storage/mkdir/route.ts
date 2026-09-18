@@ -6,7 +6,6 @@ import { readJson } from "@/server/http-parse";
 import { getEnv } from "@/server/env";
 import { hydrateStoragePaths } from "@/server/storage/config";
 import { mkdirLinuxDirectory } from "@/server/storage/browse-linux";
-import { extraVolumeBinds, hydrateExtraVolumes } from "@/server/storage/extra-volumes";
 
 const schema = z.object({
   dir: z.string().min(1).max(512),
@@ -18,14 +17,8 @@ export async function POST(request: Request) {
     await assertSameOrigin();
     const actor = await requirePermission("storage.global");
     const body = await readJson(request, schema);
-    const [paths, extras] = await Promise.all([hydrateStoragePaths(), hydrateExtraVolumes()]);
-    const created = mkdirLinuxDirectory(
-      body.dir,
-      body.name,
-      extraVolumeBinds(paths.storagePath, extras),
-      paths.storagePath,
-      getEnv().hostStorage,
-    );
+    const paths = await hydrateStoragePaths();
+    const created = mkdirLinuxDirectory(body.dir, body.name, [], paths.storagePath, getEnv().hostStorage);
     await writeAudit({
       userId: actor.id,
       ip: await clientIp(),

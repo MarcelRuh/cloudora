@@ -24,6 +24,11 @@ enum SharePermission {
   EDIT
 }
 
+enum FolderShareAccess {
+  READ
+  WRITE
+}
+
 model User {
   id                   String    @id @default(cuid())
   username             String    @unique
@@ -52,6 +57,7 @@ model User {
   oneTimeDownloads     OneTimeDownload[]
   shares               Share[]
   trashItems           TrashItem[]
+  folderShareGrants    FolderShareGrant[]
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 }
@@ -63,9 +69,10 @@ model Role {
   description String   @default("")
   isSystem    Boolean  @default(false)
   permissions String[]
-  users       User[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  users             User[]
+  folderShareGrants FolderShareGrant[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 model Session {
@@ -179,4 +186,33 @@ model RateLimit {
 model Setting {
   key   String @id
   value Json
+}
+
+model FolderShare {
+  id        String             @id @default(cuid())
+  name      String
+  slug      String             @unique
+  hostPath  String
+  comment   String             @default("")
+  enabled   Boolean            @default(true)
+  grants    FolderShareGrant[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+}
+
+model FolderShareGrant {
+  id        String            @id @default(cuid())
+  shareId   String
+  share     FolderShare       @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId    String?
+  role      Role?             @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  access    FolderShareAccess
+  subPath   String            @default("")
+  createdAt DateTime          @default(now())
+
+  @@index([shareId])
+  @@index([userId])
+  @@index([roleId])
 }

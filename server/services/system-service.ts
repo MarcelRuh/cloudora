@@ -4,8 +4,8 @@ import { APP_VERSION } from "@/lib/version";
 import { prisma } from "@/server/db";
 import { getEnv } from "@/server/env";
 import { hydrateStoragePaths } from "@/server/storage/config";
+import { hydrateFolderShares, getFolderShares } from "@/server/storage/folder-shares";
 import { storageRoot } from "@/server/storage/scope";
-import { hydrateExtraVolumes } from "@/server/storage/extra-volumes";
 import { diskWarning, listStorageDisks, volumeStats } from "@/server/storage/volume";
 
 const STARTED_AT = Date.now();
@@ -13,12 +13,14 @@ const STARTED_AT = Date.now();
 export async function systemInfo() {
   const env = getEnv();
   const paths = await hydrateStoragePaths();
+  await hydrateFolderShares();
   const root = storageRoot();
-  const extras = await hydrateExtraVolumes();
   const disks = await listStorageDisks({
     storagePath: root,
     hostStorage: env.hostStorage,
-    extraVolumes: extras,
+    extraPaths: getFolderShares()
+      .filter((s) => s.enabled)
+      .map((s) => ({ id: s.id, name: s.name, absPath: s.hostPath })),
   });
   const volume = fs.existsSync(root) ? await volumeStats(root) : null;
   let dbOk = false;
@@ -51,7 +53,7 @@ export async function systemInfo() {
     disks,
     database: dbOk ? "online" : "offline",
     databaseBytes: dbSize,
-    docker: Boolean(process.env.container || fs.existsSync("/.dockerenv")),
+    docker: getEnv().runtime === "docker",
     publicUrl: env.publicUrl,
   };
 }

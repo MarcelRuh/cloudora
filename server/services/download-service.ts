@@ -32,7 +32,7 @@ export async function createOneTimeDownload(
   const stat = await statOrNull(resolved.absPath);
   if (!stat) throw new AppError("NOT_FOUND", "Datei nicht gefunden.", 404);
   if (stat.isDirectory()) {
-    throw new AppError("NOT_A_FILE", "One-Time-Downloads sind nur für einzelne Dateien verfügbar.", 400);
+    throw new AppError("NOT_A_FILE", "Einmal-Links sind nur für einzelne Dateien verfügbar.", 400);
   }
   const hours = Math.min(Math.max(input.expiresInHours ?? 24, 1), 24 * 30);
   const maxDownloads = Math.min(Math.max(input.maxDownloads ?? 1, 1), 100);
@@ -67,11 +67,12 @@ export async function listOneTimeDownloads(user: SessionUser, all: boolean) {
     where,
     include: { createdBy: { select: { username: true, displayName: true } } },
     orderBy: { createdAt: "desc" },
-    take: 200,
+    take: 500,
   });
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
+    path: row.virtualPath,
     description: row.description,
     expiresAt: row.expiresAt.toISOString(),
     maxDownloads: row.maxDownloads,
@@ -104,7 +105,17 @@ export async function revokeOneTimeDownload(user: SessionUser, id: string) {
   if (row.createdById !== user.id && !userHasPermission(user, "downloads.manage")) {
     throw new AppError("FORBIDDEN", "Dafür fehlen dir die Berechtigungen.", 403);
   }
+  if (row.revokedAt) return;
   await prisma.oneTimeDownload.update({ where: { id }, data: { revokedAt: new Date() } });
+}
+
+export async function deleteOneTimeDownload(user: SessionUser, id: string) {
+  const row = await prisma.oneTimeDownload.findUnique({ where: { id } });
+  if (!row) throw new AppError("NOT_FOUND", "Download-Link nicht gefunden.", 404);
+  if (!userHasPermission(user, "downloads.manage") && row.createdById !== user.id) {
+    throw new AppError("FORBIDDEN", "Dafür fehlen dir die Berechtigungen.", 403);
+  }
+  await prisma.oneTimeDownload.delete({ where: { id } });
 }
 
 export async function inspectPublicDownload(token: string) {
@@ -123,7 +134,7 @@ export async function inspectPublicDownload(token: string) {
   };
 }
 
-export async function consumePublicDownload(token: string, password: string | undefined, ip: string, userAgent: string | null) {
+async function loadPublicDownload(token: string, password: string | undefined, unlocked = false) {
   await hydrateStoragePaths();
   const row = await prisma.oneTimeDownload.findUnique({
     where: { tokenHash: hashToken(token) },
@@ -133,11 +144,28 @@ export async function consumePublicDownload(token: string, password: string | un
   if (!isDownloadValid(row)) {
     throw new AppError("TOKEN_EXPIRED", "Dieser Download-Link ist abgelaufen oder bereits verwendet.", 410);
   }
-  if (row.passwordHash) {
+  if (row.passwordHash && !unlocked) {
     if (!password) throw new AppError("PASSWORD_REQUIRED", "Dieser Download ist passwortgeschützt.", 401);
     const ok = await verifyPassword(password, row.passwordHash);
     if (!ok) throw new AppError("INVALID_PASSWORD", "Das Passwort ist falsch.", 401);
   }
+  return row;
+}
+
+export async function unlockPublicDownload(token: string, password: string | undefined, unlocked = false) {
+  const row = await loadPublicDownload(token, password, unlocked);
+  return { name: row.name };
+}
+
+export async function consumePublicDownload(
+  token: string,
+  password: string | undefined,
+  ip: string,
+  userAgent: string | null,
+  unlocked = false,
+  count = true,
+) {
+  const row = await loadPublicDownload(token, password, unlocked);
   const owner = row.createdBy;
   const resolved = resolveUserPath(
     {
@@ -171,22 +199,24 @@ export async function consumePublicDownload(token: string, password: string | un
   if (!stat || stat.isDirectory()) {
     throw new AppError("NOT_FOUND", "Die Datei ist nicht mehr verfügbar.", 404);
   }
-  const updated = await prisma.oneTimeDownload.updateMany({
-    where: {
-      id: row.id,
-      revokedAt: null,
-      downloadCount: { lt: row.maxDownloads },
-      expiresAt: { gt: new Date() },
-    },
-    data: {
-      downloadCount: { increment: 1 },
-      lastDownloadedAt: new Date(),
-      lastIp: ip,
-      lastUserAgent: userAgent,
-    },
-  });
-  if (updated.count !== 1) {
-    throw new AppError("TOKEN_EXPIRED", "Dieser Download-Link ist abgelaufen oder bereits verwendet.", 410);
+  if (count) {
+    const updated = await prisma.oneTimeDownload.updateMany({
+      where: {
+        id: row.id,
+        revokedAt: null,
+        downloadCount: { lt: row.maxDownloads },
+        expiresAt: { gt: new Date() },
+      },
+      data: {
+        downloadCount: { increment: 1 },
+        lastDownloadedAt: new Date(),
+        lastIp: ip,
+        lastUserAgent: userAgent,
+      },
+    });
+    if (updated.count !== 1) {
+      throw new AppError("TOKEN_EXPIRED", "Dieser Download-Link ist abgelaufen oder bereits verwendet.", 410);
+    }
   }
   return {
     absPath: resolved.absPath,
@@ -194,6 +224,6 @@ export async function consumePublicDownload(token: string, password: string | un
     size: Number(stat.size),
     mime: mimeFromName(row.name),
     stream: fs.createReadStream(resolved.absPath),
-    remainingAfter: row.maxDownloads - row.downloadCount - 1,
+    remainingAfter: row.maxDownloads - row.downloadCount - (count ? 1 : 0),
   };
 }

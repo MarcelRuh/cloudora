@@ -1,48 +1,44 @@
 import { describe, expect, it } from "vitest";
 import { AppError } from "@/lib/errors";
-import { assertQuota } from "@/server/storage/quota";
-import type { SessionUser } from "@/lib/types";
+import { assertQuotaLimit, countsTowardQuota } from "@/server/storage/quota";
+import type { StorageScope } from "@/server/storage/path-resolver";
 
-const base: SessionUser = {
-  id: "u1",
-  username: "marcel",
-  displayName: "Marcel",
-  email: "m@localhost",
-  status: "ACTIVE",
-  homePathEnabled: true,
-  homePath: "users/marcel",
-  quotaBytes: 1000,
-  usedBytes: 800,
-  canUpload: true,
-  canDownload: true,
-  canDelete: true,
-  canEdit: true,
-  canShare: true,
-  canOneTimeDownload: true,
-  appearance: "dark",
-  totpEnabled: false,
-  role: { id: "r", name: "Benutzer", slug: "user", permissions: [] },
+const scope: StorageScope = {
+  kind: "global",
+  jailRoot: "/tmp",
+  catalogOnly: true,
+  rootLabel: "Dateien",
+  extraRoots: [
+    { virtualRoot: "/Home", absRoot: "/tmp/home", writable: true, label: "Home", kind: "home" },
+    { virtualRoot: "/share", absRoot: "/tmp/share", writable: true, label: "Share", kind: "share" },
+  ],
 };
 
 describe("quota", () => {
-  it("allows uploads under quota", async () => {
-    await expect(assertQuota(base, 100)).resolves.toBeUndefined();
+  it("allows uploads under quota", () => {
+    expect(() => assertQuotaLimit(800, 1000, 100)).not.toThrow();
   });
 
-  it("blocks uploads over quota with details", async () => {
-    await expect(assertQuota(base, 500)).rejects.toMatchObject({
-      code: "QUOTA_EXCEEDED",
-      details: { availableBytes: 200, fileBytes: 500 },
-    });
+  it("blocks uploads over quota with details", () => {
     try {
-      await assertQuota(base, 2800);
+      assertQuotaLimit(800, 1000, 500);
+      throw new Error("expected quota error");
     } catch (error) {
       expect(error).toBeInstanceOf(AppError);
+      expect(error).toMatchObject({
+        code: "QUOTA_EXCEEDED",
+        details: { availableBytes: 200, fileBytes: 500 },
+      });
       expect((error as AppError).message).toContain("Speicherlimit");
     }
   });
 
-  it("allows unlimited quota", async () => {
-    await expect(assertQuota({ ...base, quotaBytes: null }, 9_000_000_000)).resolves.toBeUndefined();
+  it("allows unlimited quota", () => {
+    expect(() => assertQuotaLimit(800, null, 9_000_000_000)).not.toThrow();
+  });
+
+  it("counts only home paths toward quota", () => {
+    expect(countsTowardQuota({ scope, virtualPath: "/Home/foto.jpg" })).toBe(true);
+    expect(countsTowardQuota({ scope, virtualPath: "/share/foto.jpg" })).toBe(false);
   });
 });

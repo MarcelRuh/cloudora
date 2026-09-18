@@ -1,17 +1,16 @@
 import { z } from "zod";
 import { cookies } from "next/headers";
-import { requireSession } from "@/server/auth/session";
+import { hashSessionToken, requireSession } from "@/server/auth/session";
 import { assertSameOrigin, COOKIE_NAME, jsonError, jsonOk } from "@/server/http";
 import { readJson } from "@/server/http-parse";
 import { changeOwnPassword, updateOwnProfile } from "@/server/services/user-service";
 import { prisma } from "@/server/db";
-import { hashToken } from "@/server/crypto";
 
 export async function GET() {
   try {
     const user = await requireSession();
     const token = (await cookies()).get(COOKIE_NAME)?.value;
-    const currentHash = token ? hashToken(token) : "";
+    const currentHash = token ? hashSessionToken(token) : "";
     const sessions = await prisma.session.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },

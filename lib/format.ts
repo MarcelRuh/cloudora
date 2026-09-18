@@ -8,6 +8,12 @@ export function formatBytes(bytes: number | bigint | null | undefined): string {
   return `${num >= 10 || exp === 0 ? num.toFixed(0) : num.toFixed(1)} ${UNITS[exp]}`;
 }
 
+export function formatSpeed(bytesPerSecond: number | null | undefined): string {
+  const value = Number(bytesPerSecond ?? 0);
+  if (!Number.isFinite(value) || value <= 0) return "0 B/s";
+  return `${formatBytes(value)}/s`;
+}
+
 export function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "—";
   const date = value instanceof Date ? value : new Date(value);

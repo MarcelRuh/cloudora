@@ -1,13 +1,5 @@
-import { LinkTable } from "@/components/admin/link-table";
+import { LinksHub } from "@/components/admin/links-hub";
 
 export default function SharesPage() {
-  return (
-    <div className="space-y-4">
-      <div>
-        <p className="cloudora-section">Cloudora</p>
-        <h1 className="cloudora-title text-2xl">Freigaben</h1>
-      </div>
-      <LinkTable kind="shares" />
-    </div>
-  );
+  return <LinksHub />;
 }

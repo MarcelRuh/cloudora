@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { AppError, isAppError } from "@/lib/errors";
 import { getEnv } from "@/server/env";
 import { logger } from "@/server/logger";
+import { originIsAllowed } from "@/server/origin";
 
 export function jsonOk<T extends object>(data: T, status = 200): NextResponse {
   return NextResponse.json(data, { status });
@@ -52,26 +53,18 @@ export function publicOrigin(): string {
 
 export async function assertSameOrigin(): Promise<void> {
   const origin = await requestOrigin();
-  if (!origin) return;
   const env = getEnv();
-  const allowed = new Set<string>([env.publicUrl, ...env.allowedOrigins]);
-  try {
-    allowed.add(new URL(env.publicUrl).origin);
-  } catch {
-    /* ignore */
-  }
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const proto = env.trustProxy ? (h.get("x-forwarded-proto") ?? "http") : "http";
-  if (host) allowed.add(`${proto}://${host.split(",")[0]?.trim()}`);
-  if (!env.trustProxy && host) {
-    allowed.add(`http://${host}`);
-    allowed.add(`https://${host}`);
-  }
-  const originUrl = origin.replace(/\/$/, "");
-  if (![...allowed].some((item) => item.replace(/\/$/, "") === originUrl)) {
-    throw new AppError("CSRF", "Ungültige Herkunft der Anfrage.", 403);
-  }
+  originIsAllowed(origin, {
+    publicUrl: env.publicUrl,
+    allowedOrigins: env.allowedOrigins,
+    host,
+    proto,
+    requireOrigin: true,
+    allowHostHttpAndHttps: !env.trustProxy,
+  });
 }
 
 export const COOKIE_NAME = "cloudora_session";

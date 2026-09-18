@@ -283,6 +283,20 @@ select optgroup {
   box-shadow: var(--ui-fill-glow);
 }
 
+.cloudora-gauge-indeterminate > span {
+  width: 32%;
+  animation: cloudora-gauge-slide 1.1s ease-in-out infinite;
+}
+
+@keyframes cloudora-gauge-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
 .cloudora-fill {
   background: var(--ui-fill);
   box-shadow: var(--ui-fill-glow);

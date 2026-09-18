@@ -154,7 +154,14 @@ write_progress 4 start "Update started"
 
 need wget
 need tar
-if [ "$SKIP_COMPOSE" != "1" ]; then
+NATIVE=0
+if [ "${CLOUDORA_RUNTIME:-}" = "native" ] || [ -f /etc/systemd/system/cloudora.service ]; then
+  NATIVE=1
+fi
+if [ "$NATIVE" = "1" ]; then
+  need node
+  need npm
+elif [ "$SKIP_COMPOSE" != "1" ]; then
   need docker
   docker compose version >/dev/null 2>&1 || { echo "ERROR: docker compose plugin required" >&2; exit 1; }
 fi
@@ -171,8 +178,8 @@ fi
 TARBALL_URL="https://github.com/${REPO}/archive/refs/tags/${RELEASE_TAG}.tar.gz"
 echo " release=${RELEASE_TAG}"
 
-if [ ! -f "${INSTALL_DIR}/docker-compose.yml" ]; then
-  echo "ERROR: docker-compose.yml missing in ${INSTALL_DIR}" >&2
+if [ ! -f "${INSTALL_DIR}/package.json" ]; then
+  echo "ERROR: package.json missing in ${INSTALL_DIR}" >&2
   exit 1
 fi
 
@@ -235,8 +242,7 @@ sync_via_git() {
     -e .cloudora-revision \
     -e .cloudora-update-progress \
     -e .cloudora-update-compose.log \
-    -e .cloudora-update.lock \
-    -e docker-compose.cloudora-volumes.yml
+    -e .cloudora-update.lock
   echo " git reset to $REMOTE ($RELEASE_TAG)"
 }
 
@@ -255,7 +261,6 @@ sync_via_tarball() {
     --exclude='./.git' \
     --exclude='./node_modules' \
     --exclude='./.next' \
-    --exclude='./docker-compose.cloudora-volumes.yml' \
     . | (cd "$INSTALL_DIR" && tar xf -)
 }
 
@@ -281,6 +286,29 @@ else
   write_progress 16 sync "Downloading source"
   sync_via_tarball
   write_progress 22 sync "Source synced"
+fi
+
+if [ "$NATIVE" = "1" ]; then
+  echo "==> Native rebuild"
+  write_progress 28 deps "npm ci"
+  cd "$INSTALL_DIR"
+  npm ci
+  write_progress 50 migrate "Prisma migrate"
+  npx prisma generate
+  npx prisma migrate deploy
+  write_progress 70 buildWeb "next build"
+  npm run build
+  mkdir -p .next/standalone/.next
+  rm -rf .next/standalone/.next/static
+  cp -a .next/static .next/standalone/.next/static
+  write_progress 90 startWeb "systemctl restart"
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl restart cloudora || true
+  fi
+  printf '%s\n' "$SHA" > "${INSTALL_DIR}/.cloudora-revision"
+  write_progress 100 done "Native update complete"
+  echo "==> Done. Cloudora native service restarted."
+  exit 0
 fi
 
 if [ "$SKIP_COMPOSE" = "1" ]; then

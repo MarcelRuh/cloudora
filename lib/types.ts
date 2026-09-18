@@ -37,11 +37,12 @@ export type ExplorerEntry = {
   mimeType: string | null;
   kind: FileKind;
   editable: boolean;
-  /** Shown instead of `name` for extra volumes (filesystem name stays `name`). */
+  /** Shown instead of `name` for host trees like `/mnt` (filesystem name stays `name`). */
   displayName?: string;
   mount?: {
     label: string;
     name?: string;
+    kind?: "home" | "share";
     hostPath?: string;
   };
 };

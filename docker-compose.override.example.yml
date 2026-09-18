@@ -1,11 +1,3 @@
-# Extra Host-Mounts (manuell). /mnt, /media und /srv sind bereits im Container.
-#
-# Nur ungewöhnliche Pfade brauchen noch ein Extra-Bind, z. B.:
-# services:
-#   cloudora:
-#     volumes:
-#       - /home/daten:/storage/volumes/daten
-#
-# Danach: docker compose up -d --no-build
+# /mnt, /media und /srv sind bereits im Container. Override nur für Sonderfälle (z. B. /home).
 
 services: {}

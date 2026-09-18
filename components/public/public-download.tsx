@@ -1,13 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
 import { LogoLockup } from "@/components/layout/logo-lockup";
 import { UiAtmosphere } from "@/components/layout/ui-atmosphere";
 import { api, ApiRequestError } from "@/lib/api";
+import { startNativeDownload } from "@/lib/download-browser";
 import { kindOf, previewable } from "@/lib/file-kinds";
 import { formatBytes } from "@/lib/format";
 import { APP_NAME } from "@/lib/version";
@@ -44,6 +45,7 @@ function folderZipName(cwd: string, shareName?: string) {
 
 export function PublicDownload({ token, kind }: { token: string; kind: "d" | "s" }) {
   const [password, setPassword] = useState("");
+  const [unlocked, setUnlocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [cwd, setCwd] = useState("/");
@@ -55,30 +57,48 @@ export function PublicDownload({ token, kind }: { token: string; kind: "d" | "s"
   });
 
   async function postShare(op: "download" | "list" | "preview", relative?: string) {
-    const res = await fetch(`/api/public/${kind}/${token}`, {
+    return fetch(`/api/public/${kind}/${token}`, {
       method: "POST",
+      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: password || undefined, op, relative }),
+      body: JSON.stringify({
+        password: unlocked ? undefined : password || undefined,
+        op,
+        relative,
+        unlock: kind === "d" ? true : undefined,
+      }),
     });
-    return res;
+  }
+
+  async function unlockLink() {
+    if (kind === "d") {
+      const res = await fetch(`/api/public/d/${token}`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: password || undefined, unlock: true }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Freischalten fehlgeschlagen.");
+      setUnlocked(true);
+      setPassword("");
+      return;
+    }
+    const ok = await loadList("/", { silentAuth: !password });
+    if (!ok) throw new Error("Passwort erforderlich.");
+  }
+
+  function fileUrl(relative = "/") {
+    if (kind === "d") return `/api/public/d/${token}/file`;
+    return `/api/public/s/${token}/file?relative=${encodeURIComponent(relative)}`;
   }
 
   async function download(relative = "/", name = meta.data?.name || "download") {
     setBusy(true);
     setError(null);
     try {
-      const res = await postShare("download", relative);
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error || "Download fehlgeschlagen.");
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      a.click();
-      URL.revokeObjectURL(url);
+      if (!unlocked) await unlockLink();
+      startNativeDownload(fileUrl(relative), name);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Download fehlgeschlagen.");
     } finally {
@@ -86,17 +106,23 @@ export function PublicDownload({ token, kind }: { token: string; kind: "d" | "s"
     }
   }
 
-  async function loadList(relative = cwd) {
+  async function loadList(relative = cwd, opts?: { silentAuth?: boolean }) {
     setBusy(true);
     setError(null);
     try {
       const res = await postShare("list", relative);
       const data = (await res.json().catch(() => ({}))) as { error?: string; items?: ShareItem[]; path?: string };
+      if (res.status === 401 && opts?.silentAuth) return false;
       if (!res.ok) throw new Error(data.error || "Ordner konnte nicht geladen werden.");
       setCwd(data.path || relative);
       setItems(data.items ?? []);
+      setUnlocked(true);
+      setPassword("");
+      return true;
     } catch (e) {
+      if (opts?.silentAuth) return false;
       setError(e instanceof Error ? e.message : "Ordner konnte nicht geladen werden.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -126,10 +152,10 @@ export function PublicDownload({ token, kind }: { token: string; kind: "d" | "s"
     setError(null);
     try {
       const fd = new FormData();
-      fd.append("password", password);
+      if (!unlocked && password) fd.append("password", password);
       fd.append("relative", cwd);
       fd.append("file", file);
-      const res = await fetch(`/api/public/s/${token}/upload`, { method: "POST", body: fd });
+      const res = await fetch(`/api/public/s/${token}/upload`, { method: "POST", credentials: "same-origin", body: fd });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(data.error || "Upload fehlgeschlagen.");
       if (meta.data?.isDir) await loadList(cwd);
@@ -140,20 +166,45 @@ export function PublicDownload({ token, kind }: { token: string; kind: "d" | "s"
     }
   }
 
+  useEffect(() => {
+    if (!meta.data) return;
+    if (kind === "s" && meta.data.isDir && items === null) {
+      void loadList("/", { silentAuth: true });
+    }
+    if (kind === "d" && !meta.data.hasPassword) setUnlocked(true);
+    if (kind === "s" && meta.data.isDir === false && !meta.data.hasPassword) setUnlocked(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meta.data]);
+
   const shareReady = kind === "s" && (items !== null || meta.data?.isDir === false);
+  const showPassword = Boolean(meta.data?.hasPassword) && !unlocked;
 
   return (
     <div className="relative flex min-h-screen items-center justify-center p-6">
       <UiAtmosphere />
       <Card className="relative z-10 w-full max-w-lg">
         <LogoLockup />
-        <h1 className="cloudora-title mt-6 text-xl">{kind === "s" ? "Freigabe" : "Download"}</h1>
+        <h1 className="cloudora-title mt-6 text-xl">{kind === "s" ? "Geteilter Link" : "Einmal-Link"}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{meta.data?.name || APP_NAME}</p>
-        {meta.data?.hasPassword ? (
+        {showPassword ? (
           <div className="mt-4">
             <Label>Passwort</Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Input
+              type="password"
+              value={password}
+              autoComplete="current-password"
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (kind === "s" && meta.data?.isDir) void loadList("/");
+                  else void download("/", meta.data?.name || "download");
+                }
+              }}
+            />
           </div>
+        ) : null}
+        {unlocked && meta.data?.hasPassword ? (
+          <p className="mt-3 text-xs text-muted-foreground">Link ist freigeschaltet.</p>
         ) : null}
         {error || meta.error ? (
           <p className="mt-3 text-sm text-destructive">
@@ -173,7 +224,7 @@ export function PublicDownload({ token, kind }: { token: string; kind: "d" | "s"
             >
               {busy ? "Lade…" : kind === "s" && meta.data?.isDir ? "Öffnen" : "Herunterladen"}
             </Button>
-            {kind === "s" && meta.data?.isDir && meta.data.canDownload ? (
+            {kind === "s" && meta.data?.isDir && meta.data.canDownload && unlocked ? (
               <Button
                 variant="outline"
                 className="w-full"
@@ -201,10 +252,14 @@ export function PublicDownload({ token, kind }: { token: string; kind: "d" | "s"
             {meta.data.canEdit ? (
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium">Datei ersetzen</span>
-                <Input type="file" disabled={busy} onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void uploadFile(file);
-                }} />
+                <Input
+                  type="file"
+                  disabled={busy}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void uploadFile(file);
+                  }}
+                />
               </label>
             ) : null}
           </div>
@@ -216,7 +271,12 @@ export function PublicDownload({ token, kind }: { token: string; kind: "d" | "s"
               <span className="truncate font-mono">{cwd}</span>
               <div className="flex shrink-0 items-center gap-1">
                 {meta.data?.canDownload ? (
-                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void download(cwd, folderZipName(cwd, meta.data?.name))}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void download(cwd, folderZipName(cwd, meta.data?.name))}
+                  >
                     Als ZIP
                   </Button>
                 ) : null}
@@ -263,10 +323,14 @@ export function PublicDownload({ token, kind }: { token: string; kind: "d" | "s"
             {meta.data?.canEdit ? (
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium">Datei hochladen</span>
-                <Input type="file" disabled={busy} onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void uploadFile(file);
-                }} />
+                <Input
+                  type="file"
+                  disabled={busy}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void uploadFile(file);
+                  }}
+                />
               </label>
             ) : null}
           </div>

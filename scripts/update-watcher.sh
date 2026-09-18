@@ -13,7 +13,6 @@ SIGNAL_VOLUME="${CLOUDORA_SIGNAL_VOLUME:-cloudora_update_signal}"
 APPLY="${INSTALL_DIR}/scripts/self-update-apply.sh"
 REQUEST="${SIGNAL_DIR}/request"
 COMPOSE_UP="${SIGNAL_DIR}/compose-up"
-VOLUMES_SPEC="${SIGNAL_DIR}/extra-volumes.yml"
 LOCK="${SIGNAL_DIR}/.cloudora-update.lock"
 
 if ! echo "$REPO" | grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'; then
@@ -78,16 +77,10 @@ compose_files() {
   if [ -f "${INSTALL_DIR}/docker-compose.override.yml" ]; then
     printf ' %s' "-f docker-compose.override.yml"
   fi
-  if [ -f "${INSTALL_DIR}/docker-compose.cloudora-volumes.yml" ]; then
-    printf ' %s' "-f docker-compose.cloudora-volumes.yml"
-  fi
 }
 
-apply_extra_volumes() {
-  if [ -f "$VOLUMES_SPEC" ]; then
-    cp "$VOLUMES_SPEC" "${INSTALL_DIR}/docker-compose.cloudora-volumes.yml"
-  fi
-  echo "==> Applying extra storage volumes (cloudora only)"
+recreate_app() {
+  echo "==> Recreating cloudora"
   cd "$INSTALL_DIR"
   if [ -S /var/run/docker.sock ]; then
     unset DOCKER_HOST
@@ -106,7 +99,7 @@ while true; do
     if updater_running; then
       echo "==> Skip compose-up, updater running"
     else
-      apply_extra_volumes || echo "==> compose-up failed" >&2
+      recreate_app || echo "==> compose-up failed" >&2
     fi
   fi
   if [ -f "$REQUEST" ]; then

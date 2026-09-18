@@ -4,29 +4,12 @@ import { writeAudit } from "@/server/audit";
 import { assertSameOrigin, clientIp, jsonError, jsonOk } from "@/server/http";
 import { readJson } from "@/server/http-parse";
 import { ensureStorageLayout, storageRoot } from "@/server/storage/scope";
-import {
-  hydrateStoragePaths,
-  inspectPath,
-  saveStoragePaths,
-} from "@/server/storage/config";
+import { hydrateStoragePaths, inspectPath, saveStoragePaths } from "@/server/storage/config";
 import { getEnv } from "@/server/env";
 import { prisma } from "@/server/db";
 import { inspectLinuxPath } from "@/server/storage/browse-linux";
-import { isMountPoint } from "@/server/storage/host-fs";
+import { hydrateFolderShares, getFolderShares } from "@/server/storage/folder-shares";
 import { listStorageDisks } from "@/server/storage/volume";
-import {
-  AUTO_SHARED_VOLUME_ID,
-  AUTO_USERS_VOLUME_ID,
-  configuredPathNeedsHostBind,
-  ensureExtraVolumeDirs,
-  extraVolumeBinds,
-  extraVolumeContainerPath,
-  extraVolumesFingerprint,
-  hydrateExtraVolumes,
-  requestComposeApply,
-  saveExtraVolumes,
-  syncAutoExtraVolumes,
-} from "@/server/storage/extra-volumes";
 
 export async function GET() {
   try {
@@ -46,12 +29,13 @@ export async function GET() {
       },
       orderBy: { username: "asc" },
     });
-    const extras = await hydrateExtraVolumes();
-    const binds = extraVolumeBinds(paths.storagePath, extras);
+    await hydrateFolderShares();
     const disks = await listStorageDisks({
       storagePath: root,
       hostStorage: env.hostStorage,
-      extraVolumes: extras,
+      extraPaths: getFolderShares()
+        .filter((s) => s.enabled)
+        .map((s) => ({ id: s.id, name: s.name, absPath: s.hostPath })),
     });
     const primary = disks[0];
     return jsonOk({
@@ -59,10 +43,9 @@ export async function GET() {
       hostStorage: env.hostStorage,
       usersDir: paths.usersDir,
       sharedDir: paths.sharedDir,
-      extraVolumes: extras,
       storageStatus: inspectPath(paths.storagePath),
-      usersDirStatus: inspectLinuxPath(paths.usersDir, paths.storagePath, binds, env.hostStorage),
-      sharedDirStatus: inspectLinuxPath(paths.sharedDir, paths.storagePath, binds, env.hostStorage),
+      usersDirStatus: inspectLinuxPath(paths.usersDir, paths.storagePath, [], env.hostStorage),
+      sharedDirStatus: inspectLinuxPath(paths.sharedDir, paths.storagePath, [], env.hostStorage),
       usedBytes: primary?.usedBytes ?? 0,
       totalBytes: primary?.totalBytes ?? null,
       freeBytes: primary?.freeBytes ?? null,
@@ -89,32 +72,8 @@ export async function PATCH(request: Request) {
     await assertSameOrigin();
     const actor = await requirePermission("storage.global");
     const body = await readJson(request, patchSchema);
-    const hostStorage = getEnv().hostStorage;
-    const previous = await hydrateExtraVolumes();
     const paths = await saveStoragePaths(body);
-    const synced = syncAutoExtraVolumes(previous, paths.storagePath, paths.usersDir, paths.sharedDir, hostStorage);
-    const volumesChanged = extraVolumesFingerprint(synced) !== extraVolumesFingerprint(previous);
-    if (volumesChanged) {
-      await saveExtraVolumes(synced);
-    }
-    ensureExtraVolumeDirs(paths.storagePath, synced);
     ensureStorageLayout();
-    const needsBind =
-      configuredPathNeedsHostBind(paths.usersDir, paths.storagePath, hostStorage) ||
-      configuredPathNeedsHostBind(paths.sharedDir, paths.storagePath, hostStorage);
-    const bindPending = synced
-      .filter(
-        (vol) =>
-          vol.hostPath === paths.usersDir ||
-          vol.hostPath === paths.sharedDir ||
-          vol.id === AUTO_USERS_VOLUME_ID ||
-          vol.id === AUTO_SHARED_VOLUME_ID,
-      )
-      .some((vol) => !isMountPoint(extraVolumeContainerPath(paths.storagePath, vol.id)));
-    let apply: { mode: "sidecar" | "manual" | "live"; message: string } | null = null;
-    if (needsBind && (volumesChanged || bindPending)) {
-      apply = requestComposeApply(synced, paths.storagePath);
-    }
     await writeAudit({
       userId: actor.id,
       ip: await clientIp(),
@@ -125,8 +84,6 @@ export async function PATCH(request: Request) {
       storagePath: paths.storagePath,
       usersDir: paths.usersDir,
       sharedDir: paths.sharedDir,
-      extraVolumes: synced,
-      apply,
       storageStatus: inspectPath(paths.storagePath),
     });
   } catch (error) {

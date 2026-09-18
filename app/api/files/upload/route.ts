@@ -9,7 +9,7 @@ import { assertSafeFileName } from "@/server/storage/path-resolver";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 3600;
 
 export async function POST(request: Request) {
   try {
@@ -32,8 +32,11 @@ export async function POST(request: Request) {
     const url = new URL(request.url);
     const pathFromQuery = url.searchParams.get("path") || "/";
 
+    const overwrite =
+      url.searchParams.get("overwrite") === "1" || url.searchParams.get("overwrite") === "true";
+
     const nodeStream = Readable.fromWeb(body as import("node:stream/web").ReadableStream);
-    const bb = Busboy({ headers, defCharset: "utf8", limits: { files: 32 } });
+    const bb = Busboy({ headers, defCharset: "utf8", limits: { files: 8 } });
 
     const fields: Record<string, string> = { path: pathFromQuery };
     const uploads: Promise<unknown>[] = [];
@@ -46,8 +49,10 @@ export async function POST(request: Request) {
         const fileName = assertSafeFileName(info.filename || "upload.bin");
         const parent = fields.path || "/";
         const relativePath = fields.relativePath || "";
+        const replace =
+          overwrite || fields.overwrite === "1" || fields.overwrite === "true";
         uploads.push(
-          uploadFile(user, parent, fileName, file, undefined, relativePath).then(async (entry) => {
+          uploadFile(user, parent, fileName, file, undefined, relativePath, replace).then(async (entry) => {
             await writeAudit({ userId: user.id, ip, action: "UPLOAD", target: entry.path });
             return entry;
           }),

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { AppError } from "@/lib/errors";
 import { userHasPermission } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/types";
@@ -6,7 +7,7 @@ import { prisma } from "@/server/db";
 import { hashToken, randomToken } from "@/server/crypto";
 import { hashPassword, verifyPassword } from "@/server/auth/password";
 import { publicOrigin } from "@/server/http";
-import { resolveUserPath, zipDirectory } from "@/server/services/file-service";
+import { resolveUserPath, zipDirectory, assertZipBudget } from "@/server/services/file-service";
 import { mimeFromName } from "@/server/storage/mime";
 import { statOrNull } from "@/server/storage/fs";
 import { childVirtual } from "@/server/storage/path-resolver";
@@ -58,11 +59,12 @@ export async function listShares(user: SessionUser, all: boolean) {
     where,
     include: { createdBy: { select: { username: true, displayName: true } } },
     orderBy: { createdAt: "desc" },
-    take: 200,
+    take: 500,
   });
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
+    path: row.virtualPath,
     permission: row.permission,
     expiresAt: row.expiresAt?.toISOString() ?? null,
     hasPassword: Boolean(row.passwordHash),
@@ -82,11 +84,21 @@ function isShareValid(row: { revokedAt: Date | null; expiresAt: Date | null }): 
 
 export async function revokeShare(user: SessionUser, id: string) {
   const row = await prisma.share.findUnique({ where: { id } });
-  if (!row) throw new AppError("NOT_FOUND", "Freigabe nicht gefunden.", 404);
+  if (!row) throw new AppError("NOT_FOUND", "Link nicht gefunden.", 404);
   if (row.createdById !== user.id && !userHasPermission(user, "shares.manage")) {
     throw new AppError("FORBIDDEN", "Dafür fehlen dir die Berechtigungen.", 403);
   }
+  if (row.revokedAt) return;
   await prisma.share.update({ where: { id }, data: { revokedAt: new Date() } });
+}
+
+export async function deleteShare(user: SessionUser, id: string) {
+  const row = await prisma.share.findUnique({ where: { id } });
+  if (!row) throw new AppError("NOT_FOUND", "Link nicht gefunden.", 404);
+  if (!userHasPermission(user, "shares.manage") && row.createdById !== user.id) {
+    throw new AppError("FORBIDDEN", "Dafür fehlen dir die Berechtigungen.", 403);
+  }
+  await prisma.share.delete({ where: { id } });
 }
 
 export async function inspectPublicShare(token: string) {
@@ -95,7 +107,7 @@ export async function inspectPublicShare(token: string) {
     where: { tokenHash: hashToken(token) },
     include: { createdBy: { include: { role: true } } },
   });
-  if (!row || !isShareValid(row)) throw new AppError("INVALID_TOKEN", "Diese Freigabe ist ungültig oder abgelaufen.", 404);
+  if (!row || !isShareValid(row)) throw new AppError("INVALID_TOKEN", "Dieser Link ist ungültig oder abgelaufen.", 404);
   const owner = toSessionUser(row.createdBy);
   const resolved = resolveUserPath(owner, row.virtualPath);
   const stat = await statOrNull(resolved.absPath);
@@ -111,15 +123,15 @@ export async function inspectPublicShare(token: string) {
   };
 }
 
-async function loadShare(token: string, password: string | undefined) {
+async function loadShare(token: string, password: string | undefined, unlocked = false) {
   await hydrateStoragePaths();
   const row = await prisma.share.findUnique({
     where: { tokenHash: hashToken(token) },
     include: { createdBy: { include: { role: true } } },
   });
-  if (!row || !isShareValid(row)) throw new AppError("INVALID_TOKEN", "Diese Freigabe ist ungültig oder abgelaufen.", 404);
-  if (row.passwordHash) {
-    if (!password) throw new AppError("PASSWORD_REQUIRED", "Diese Freigabe ist passwortgeschützt.", 401);
+  if (!row || !isShareValid(row)) throw new AppError("INVALID_TOKEN", "Dieser Link ist ungültig oder abgelaufen.", 404);
+  if (row.passwordHash && !unlocked) {
+    if (!password) throw new AppError("PASSWORD_REQUIRED", "Dieser Link ist passwortgeschützt.", 401);
     const ok = await verifyPassword(password, row.passwordHash);
     if (!ok) throw new AppError("INVALID_PASSWORD", "Das Passwort ist falsch.", 401);
   }
@@ -141,21 +153,30 @@ function childOfShare(owner: ReturnType<typeof toSessionUser>, shareVirtual: str
   }
   const target = resolveUserPath(owner, virtual);
   if (target.virtualPath !== base.virtualPath && !target.virtualPath.startsWith(`${base.virtualPath}/`)) {
-    throw new AppError("PATH_TRAVERSAL", "Pfad liegt außerhalb der Freigabe.", 403);
+    throw new AppError("PATH_TRAVERSAL", "Pfad liegt außerhalb dieses Links.", 403);
   }
   return target;
 }
 
-export async function consumePublicShare(token: string, password: string | undefined, relative = "/") {
-  const { row, owner, stat } = await loadShare(token, password);
+export async function consumePublicShare(
+  token: string,
+  password: string | undefined,
+  relative = "/",
+  unlocked = false,
+  count = true,
+) {
+  const { row, owner, stat } = await loadShare(token, password, unlocked);
   if (row.permission === "READ") {
-    throw new AppError("FORBIDDEN", "Download ist für diese Freigabe nicht erlaubt.", 403);
+    throw new AppError("FORBIDDEN", "Download ist für diesen Link nicht erlaubt.", 403);
   }
   const target = stat.isDirectory() ? childOfShare(owner, row.virtualPath, relative) : resolveUserPath(owner, row.virtualPath);
   const targetStat = await statOrNull(target.absPath);
   if (!targetStat) throw new AppError("NOT_FOUND", "Die Datei ist nicht mehr verfügbar.", 404);
-  await prisma.share.update({ where: { id: row.id }, data: { downloadCount: { increment: 1 } } });
+  if (count) {
+    await prisma.share.update({ where: { id: row.id }, data: { downloadCount: { increment: 1 } } });
+  }
   if (targetStat.isDirectory()) {
+    await assertZipBudget(target.absPath);
     const name = `${target.name || row.name}.zip`;
     return {
       name,
@@ -174,8 +195,8 @@ export async function consumePublicShare(token: string, password: string | undef
   };
 }
 
-export async function previewPublicShare(token: string, password: string | undefined, relative = "/") {
-  const { row, owner, stat } = await loadShare(token, password);
+export async function previewPublicShare(token: string, password: string | undefined, relative = "/", unlocked = false) {
+  const { row, owner, stat } = await loadShare(token, password, unlocked);
   const target = stat.isDirectory() ? childOfShare(owner, row.virtualPath, relative) : resolveUserPath(owner, row.virtualPath);
   const targetStat = await statOrNull(target.absPath);
   if (!targetStat || targetStat.isDirectory()) throw new AppError("NOT_FOUND", "Die Datei ist nicht mehr verfügbar.", 404);
@@ -188,8 +209,8 @@ export async function previewPublicShare(token: string, password: string | undef
   };
 }
 
-export async function listPublicShare(token: string, password: string | undefined, relative = "/") {
-  const { row, owner, stat } = await loadShare(token, password);
+export async function listPublicShare(token: string, password: string | undefined, relative = "/", unlocked = false) {
+  const { row, owner, stat } = await loadShare(token, password, unlocked);
   if (!stat.isDirectory()) {
     return {
       path: "/",
@@ -217,23 +238,29 @@ export async function uploadPublicShare(
   fileName: string,
   stream: import("node:stream").Readable,
   relativeDir = "/",
+  unlocked = false,
 ) {
-  const { row, owner, stat } = await loadShare(token, password);
-  if (row.permission !== "EDIT") throw new AppError("FORBIDDEN", "Diese Freigabe erlaubt kein Hochladen.", 403);
+  const { row, owner, stat } = await loadShare(token, password, unlocked);
+  if (row.permission !== "EDIT") throw new AppError("FORBIDDEN", "Dieser Link erlaubt kein Hochladen.", 403);
   const { assertSafeFileName, childVirtual: joinChild } = await import("@/server/storage/path-resolver");
   const { writeStreamToFile } = await import("@/server/storage/fs");
+  const { uniqueFileName } = await import("@/server/storage/names");
   const { getEnv } = await import("@/server/env");
-  const { assertQuota, bumpUsedBytes } = await import("@/server/storage/quota");
   const safe = assertSafeFileName(fileName);
-  const dest = stat.isDirectory()
+  let dest = stat.isDirectory()
     ? resolveUserPath(owner, joinChild(childOfShare(owner, row.virtualPath, relativeDir).virtualPath, safe))
     : resolveUserPath(owner, row.virtualPath);
-  const existing = await statOrNull(dest.absPath);
-  const previous = existing && !existing.isDirectory() ? Number(existing.size) : 0;
+  const fileShare = !stat.isDirectory();
+  let existing = await statOrNull(dest.absPath);
+  if (existing?.isDirectory()) {
+    throw new AppError("ALREADY_EXISTS", "Ein Ordner mit diesem Namen existiert bereits.", 409);
+  }
+  if (existing && !fileShare) {
+    const unique = await uniqueFileName(path.dirname(dest.absPath), dest.name);
+    dest = resolveUserPath(owner, joinChild(childOfShare(owner, row.virtualPath, relativeDir).virtualPath, unique));
+    existing = null;
+  }
   const env = getEnv();
-  const written = await writeStreamToFile(dest.absPath, stream, env.maxUploadBytes);
-  const delta = written - previous;
-  if (delta > 0) await assertQuota(owner, delta);
-  await bumpUsedBytes(owner.id, delta);
+  const written = await writeStreamToFile(dest.absPath, stream, env.maxUploadBytes, existing ? "w" : "wx");
   return { name: dest.name, size: written };
 }

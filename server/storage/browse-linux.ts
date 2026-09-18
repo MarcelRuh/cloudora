@@ -168,6 +168,9 @@ export function resolveBrowseFsPath(
       return { fsPath: boundFs, hostBrowse: false, bind, live };
     }
   }
+  if (!host) {
+    return { fsPath: mapped, hostBrowse: false, bind: null, live: Boolean(safeStatDir(mapped)) };
+  }
   return {
     fsPath: mapped,
     hostBrowse: isHostBrowseFsPath(mapped, host),
@@ -229,7 +232,7 @@ export function mkdirLinuxDirectory(
   if (resolved.hostBrowse) {
     throw new AppError(
       "FORBIDDEN",
-      "Dieser Host-Pfad ist nur lesbar. Wähle einen Ordner unter /mnt, /media oder /srv, oder einen bereits gelinkten Host-Ordner.",
+      "Dieser Host-Pfad ist nur lesbar. Unter /mnt, /media oder /srv kannst du Ordner direkt anlegen.",
       403,
     );
   }

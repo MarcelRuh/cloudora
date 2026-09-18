@@ -4,15 +4,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ClipboardList,
-  Download,
   FolderOpen,
   HardDrive,
   LayoutDashboard,
+  Link2,
   LogOut,
   Menu,
   Search,
   Settings,
-  Share2,
   Shield,
   Trash2,
   Users,
@@ -23,6 +22,8 @@ import { Button } from "@/components/ui/button";
 import { LogoLockup } from "@/components/layout/logo-lockup";
 import { UiAtmosphere } from "@/components/layout/ui-atmosphere";
 import { CommandSearch } from "@/components/layout/command-search";
+import { TransferProvider } from "@/components/transfers/transfer-provider";
+import { TransferSidebar } from "@/components/transfers/transfer-sidebar";
 import { api } from "@/lib/api";
 import { userHasAnyPermission, type Permission } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/types";
@@ -34,15 +35,27 @@ const NAV: Array<{
   label: string;
   icon: ComponentType<{ className?: string }>;
   anyOf: Permission[];
+  aliases?: string[];
 }> = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, anyOf: ["files.read"] },
   { href: "/files", label: "Dateien", icon: FolderOpen, anyOf: ["files.read"] },
   { href: "/trash", label: "Papierkorb", icon: Trash2, anyOf: ["files.delete"] },
-  { href: "/shares", label: "Freigaben", icon: Share2, anyOf: ["shares.create", "shares.manage"] },
-  { href: "/downloads", label: "Downloads", icon: Download, anyOf: ["downloads.create", "downloads.manage"] },
+  {
+    href: "/shares",
+    label: "Meine Links",
+    icon: Link2,
+    anyOf: ["shares.create", "shares.manage", "downloads.create", "downloads.manage"],
+    aliases: ["/downloads"],
+  },
   { href: "/admin", label: "Übersicht", icon: Shield, anyOf: ["system.view"] },
   { href: "/admin/users", label: "Benutzer", icon: Users, anyOf: ["users.view"] },
   { href: "/admin/storage", label: "Speicher", icon: HardDrive, anyOf: ["system.view"] },
+  {
+    href: "/admin/links",
+    label: "Links",
+    icon: Link2,
+    anyOf: ["shares.manage", "downloads.manage"],
+  },
   { href: "/admin/audit", label: "Audit-Log", icon: ClipboardList, anyOf: ["audit.view"] },
   { href: "/admin/system", label: "System", icon: Shield, anyOf: ["system.view"] },
   { href: "/settings", label: "Einstellungen", icon: Settings, anyOf: ["files.read"] },
@@ -80,6 +93,7 @@ export function AppShell({ children, user }: { children: ReactNode; user: Sessio
   const adminNav = items.filter((i) => i.href.startsWith("/admin"));
 
   return (
+    <TransferProvider>
     <div className="app-shell relative flex h-dvh overflow-hidden bg-background">
       <UiAtmosphere />
       <aside
@@ -95,19 +109,28 @@ export function AppShell({ children, user }: { children: ReactNode; user: Sessio
           {mainNav.map((item) => (
             <NavLink
               key={item.href}
-              {...item}
-              active={pathname === item.href || pathname.startsWith(`${item.href}/`)}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+              active={navActive(pathname, item.href, item.aliases)}
             />
           ))}
           {adminNav.length ? (
             <>
               <p className="cloudora-section mt-5 px-3 pb-2">Administration</p>
               {adminNav.map((item) => (
-                <NavLink key={item.href} {...item} active={pathname === item.href} />
+                <NavLink
+                  key={item.href}
+                  href={item.href}
+                  label={item.label}
+                  icon={item.icon}
+                  active={pathname === item.href}
+                />
               ))}
             </>
           ) : null}
         </nav>
+        <TransferSidebar />
         <div className="app-sidebar-footer shrink-0 space-y-2 border-t p-3">
           <button
             type="button"
@@ -142,9 +165,15 @@ export function AppShell({ children, user }: { children: ReactNode; user: Sessio
         </header>
         <main className="flex-1 p-3 md:p-6">{children}</main>
       </div>
-      <CommandSearch open={searchOpen} onOpenChange={setSearchOpen} />
+      <CommandSearch open={searchOpen} onOpenChange={setSearchOpen} user={user} />
     </div>
+    </TransferProvider>
   );
+}
+
+function navActive(pathname: string, href: string, aliases?: string[]) {
+  if (pathname === href || pathname.startsWith(`${href}/`)) return true;
+  return Boolean(aliases?.some((alias) => pathname === alias || pathname.startsWith(`${alias}/`)));
 }
 
 function NavLink({

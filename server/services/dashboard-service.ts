@@ -2,7 +2,6 @@ import { prisma } from "@/server/db";
 import { userHasPermission } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/types";
 import { getEnv } from "@/server/env";
-import { hydrateExtraVolumes } from "@/server/storage/extra-volumes";
 import { storageRoot } from "@/server/storage/scope";
 import { listStorageDisks, type DiskSnapshot } from "@/server/storage/volume";
 
@@ -23,11 +22,9 @@ export async function dashboardStats(user: SessionUser) {
   let disks: DiskSnapshot[] = [];
   if (userHasPermission(user, "system.view")) {
     try {
-      const extras = await hydrateExtraVolumes();
       disks = await listStorageDisks({
         storagePath: storageRoot(),
         hostStorage: getEnv().hostStorage,
-        extraVolumes: extras,
       });
       if (disks.length > 0) {
         storageUsed = disks.reduce((acc, disk) => acc + disk.usedBytes, 0);

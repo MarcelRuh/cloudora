@@ -1,5 +1,5 @@
 export const APP_NAME = "Cloudora";
-export const APP_VERSION = "1.2.6";
+export const APP_VERSION = "1.3.12";
 export const EDITOR_NAME = "Formator";
 export const EDITOR_TAGLINE = "Cloudora File Editor";
 export const GITHUB_REPO = "MarcelRuh/cloudora";

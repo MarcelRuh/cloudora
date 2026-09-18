@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { isBuildPhase } from "@/lib/utils";
 
 function read(name: string, fallback = ""): string {
@@ -49,7 +50,11 @@ export function getEnv() {
     hostStorage: read("CLOUDORA_HOST_STORAGE", "./storage"),
     usersDir: sanitizeRelDir(read("CLOUDORA_USERS_DIR", "users"), "users"),
     sharedDir: sanitizeRelDir(read("CLOUDORA_SHARED_DIR", "shared"), "shared"),
+    runtime: parseRuntime(),
+    installDir: read("CLOUDORA_INSTALL_DIR", ""),
     maxUploadBytes: parseIntEnv("MAX_UPLOAD_BYTES", 32 * 1024 * 1024 * 1024),
+    maxZipFiles: parseIntEnv("MAX_ZIP_FILES", 5_000),
+    maxZipBytes: parseIntEnv("MAX_ZIP_BYTES", 8 * 1024 * 1024 * 1024),
     bootstrapAdminUsername: read("BOOTSTRAP_ADMIN_USERNAME", "admin"),
     bootstrapAdminPassword: read("BOOTSTRAP_ADMIN_PASSWORD", "changeme-now"),
     bootstrapAdminEmail: read("BOOTSTRAP_ADMIN_EMAIL", "admin@localhost"),
@@ -57,6 +62,13 @@ export function getEnv() {
     branch: read("CLOUDORA_BRANCH", "main"),
     githubToken: process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? "",
   };
+}
+
+function parseRuntime(): "native" | "docker" {
+  const raw = (process.env.CLOUDORA_RUNTIME ?? "").trim().toLowerCase();
+  if (raw === "native" || raw === "docker") return raw;
+  if (isBuildPhase()) return "native";
+  return existsSync("/.dockerenv") ? "docker" : "native";
 }
 
 function sanitizeRelDir(value: string, fallback: string): string {

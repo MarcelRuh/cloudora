@@ -3,8 +3,8 @@ import { prisma } from "@/server/db";
 import { getEnv } from "@/server/env";
 import { AppError } from "@/lib/errors";
 import { isBuildPhase } from "@/lib/utils";
-import { isAbsolutePosixPath, normalizeConfiguredPath } from "@/server/storage/configured-path";
-import { extraVolumeBinds, getCachedExtraVolumes, hydrateExtraVolumes, remapConfiguredOntoHostStorage, resolveThroughExtraVolumes } from "@/server/storage/extra-volumes";
+import { isAbsolutePosixPath, normalizeConfiguredPath, resolveConfiguredPath } from "@/server/storage/configured-path";
+import { remapConfiguredOntoHostStorage } from "@/server/storage/host-storage";
 import { inspectLinuxPath } from "@/server/storage/browse-linux";
 
 export const STORAGE_PATHS_KEY = "storage.paths";
@@ -45,22 +45,17 @@ export function sharedDirName(): string {
 
 export function resolveUsersDirAbs(): string {
   const cfg = getStoragePaths();
-  return resolveThroughExtraVolumes(cfg.usersDir, cfg.storagePath, getCachedExtraVolumes());
+  return resolveConfiguredPath(cfg.usersDir, cfg.storagePath);
 }
 
 export function resolveSharedDirAbs(): string {
   const cfg = getStoragePaths();
-  return resolveThroughExtraVolumes(cfg.sharedDir, cfg.storagePath, getCachedExtraVolumes());
+  return resolveConfiguredPath(cfg.sharedDir, cfg.storagePath);
 }
 
 export function inspectPath(absPath: string): { exists: boolean; isDirectory: boolean; writable: boolean } {
   const cfg = getStoragePaths();
-  const inspected = inspectLinuxPath(
-    absPath,
-    cfg.storagePath,
-    extraVolumeBinds(cfg.storagePath, getCachedExtraVolumes()),
-    getEnv().hostStorage,
-  );
+  const inspected = inspectLinuxPath(absPath, cfg.storagePath, [], getEnv().hostStorage);
   return { exists: inspected.exists, isDirectory: inspected.isDirectory, writable: inspected.writable };
 }
 
@@ -76,7 +71,6 @@ function parseStored(value: unknown): Partial<StoragePaths> {
 
 export async function hydrateStoragePaths(): Promise<StoragePaths> {
   if (loadedFromDb && cached) {
-    await hydrateExtraVolumes();
     return cached;
   }
   const base = fromEnv();
@@ -98,7 +92,6 @@ export async function hydrateStoragePaths(): Promise<StoragePaths> {
   } catch {
     cached = base;
   }
-  await hydrateExtraVolumes();
   return cached;
 }
 

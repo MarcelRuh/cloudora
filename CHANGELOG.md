@@ -1,5 +1,82 @@
 # Changelog
 
+## 1.3.12 – 2026-09-15
+
+- Administration → Links: alle öffentlichen und Einmal-Links aller Benutzer sperren oder restlos löschen
+
+## 1.3.11 – 2026-09-15
+
+- Große Downloads (ISO) nicht mehr nach wenigen Minuten abbrechen: HTTP-Range, kein 5-Minuten-Node-Timeout
+- Chrome kann unterbrochene Downloads fortsetzen; Range zählt nicht extra gegen Einmal-Links
+
+## 1.3.10 – 2026-09-15
+
+- Öffentliche Links: Passwort nur einmal, danach Cookie; Ordnerwechsel ohne erneute Eingabe
+- Rate-Limit nur bei falschem Passwort, nicht beim Blättern oder Download
+- Große Dateien (z. B. ISO) per Browser-Download, nicht über den Arbeitsspeicher
+
+## 1.3.9 – 2026-09-15
+
+- Zugriff klar getrennt: Konto (Benutzer) → Ordnerzugriff (Speicher) → Link nach draußen (Explorer)
+- Navigation „Links“ statt „Freigaben“; Einmal-Links auf derselben Seite
+- Speicher öffnet mit Ordnerzugriff; Explorer-Aktionen „Link teilen“ und „Einmal-Link“
+
+## 1.3.8 – 2026-09-12
+
+- Globale Suche nutzt den Datei-Index (sichtbare Freigaben), kein Dateibaum-Walk mehr
+- Self-Update unterscheidet Native (systemd) und Docker; UI und Docs ohne Compose-Default
+
+## 1.3.7 – 2026-09-12
+
+- Upload überschreibt nicht mehr still: gleicher Name wird zu `datei (1).ext`
+- Öffentliche Freigaben und One-Time-Downloads mit Rate-Limit gegen Passwort-Brute-Force
+- ZIP-Download von Ordnern mit Limit (Dateien und Größe)
+- Quota gilt für Home + Papierkorb, nicht für Ordnerfreigaben; Prüfung gegen die Datenbank
+- CSRF verlangt Origin/Referer; Sitzungstokens mit HMAC über `SESSION_SECRET`
+- Health prüft Datenbank und Storage; DB-Backup als Stream ohne RAM-Puffer
+- Große Uploads: längere Route-Laufzeit und automatischer Retry bei Netzfehlern
+
+## 1.3.6 – 2026-09-12
+
+- Download puffert große Dateien nicht mehr komplett im Browser (kein „Netzwerkfehler“)
+- Dateistreams ohne gzip, damit Content-Length stimmt
+
+## 1.3.5 – 2026-09-12
+
+- Upload/Download-Fortschritt in der Sidebar, einklappbar, mit Prozent und Speed
+
+## 1.3.4 – 2026-09-12
+
+- Upload und Download mit Fortschrittsbalken, Prozent und aktueller Geschwindigkeit
+
+## 1.3.3 – 2026-09-12
+
+- Explorer: Zurück/Vor/Ordner hoch, Suche, Aktionen immer sichtbar (ausgegraut wenn nicht nutzbar)
+- Home und Freigaben sind nicht löschbar, nur ihr Inhalt
+- Host-Pfade nur für Administratoren, Benutzer sehen nur Namen
+
+## 1.3.2 – 2026-09-12
+
+- Explorer bricht nicht mehr ab, wenn Home oder eine Freigabe auf der Platte noch nicht existiert
+- Home-Ordner unter `/mnt` werden im Native-Betrieb angelegt
+
+## 1.3.1 – 2026-09-12
+
+- Ordnerrechte auf Unterordner ohne Elternzugriff (z. B. `shared/test`, nicht `shared`)
+- Schnellfreigabe: Benutzer, Ordner, Lesen/Schreiben
+- Irreführende Host-Pfad-Hinweise im Path-Picker entfernt
+
+## 1.3.0 – 2026-09-12
+
+- Native-Betrieb (Node + PostgreSQL + systemd) statt Docker als Standard
+- Samba-ähnliche Ordnerfreigaben mit Lesen/Schreiben je Rolle oder Benutzer
+- Explorer zeigt nur konfigurierte Freigaben (plus Home), nicht mehr automatisch `/mnt`, `/media`, `/srv`
+
+## 1.2.7 – 2026-09-11
+
+- Extra-Volumes entfernt. `/mnt` (sowie `/media` und `/srv`) sind fest im Container und im Explorer
+- Kein `docker-compose.cloudora-volumes.yml` mehr
+
 ## 1.2.6 – 2026-09-11
 
 - Ordner im Path-Picker über den echten Host-Mount anlegen, nicht über das read-only-`/host`

@@ -4,13 +4,23 @@ import { useQuery } from "@tanstack/react-query";
 import { FileIcon, Folder } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
 import { Input } from "@/components/ui/input";
-import type { ExplorerEntry } from "@/lib/types";
+import { api } from "@/lib/api";
+import { isAdministrator } from "@/lib/permissions";
+import type { ExplorerEntry, SessionUser } from "@/lib/types";
 
-export function CommandSearch({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+export function CommandSearch({
+  open,
+  onOpenChange,
+  user,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  user: SessionUser;
+}) {
   const [q, setQ] = useState("");
   const router = useRouter();
+  const isAdmin = isAdministrator(user);
   const { data } = useQuery({
     queryKey: ["search", q],
     queryFn: () => api<{ items: ExplorerEntry[] }>(`/api/search?q=${encodeURIComponent(q)}`),
@@ -41,12 +51,14 @@ export function CommandSearch({ open, onOpenChange }: { open: boolean; onOpenCha
               className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-white/5"
               onClick={() => {
                 close();
-                router.push(item.isDir ? `/files?path=${encodeURIComponent(item.path)}` : `/files?path=${encodeURIComponent(item.path)}&preview=1`);
+                router.push(`/files?path=${encodeURIComponent(item.path)}`);
               }}
             >
               {item.isDir ? <Folder className="h-4 w-4 text-primary" /> : <FileIcon className="h-4 w-4 text-accent" />}
-              <span className="truncate">{item.name}</span>
-              <span className="ml-auto truncate text-xs text-muted-foreground">{item.path}</span>
+              <span className="truncate">{item.displayName || item.name}</span>
+              {isAdmin && item.mount?.hostPath ? (
+                <span className="ml-auto truncate font-mono text-xs text-muted-foreground">{item.mount.hostPath}</span>
+              ) : null}
             </button>
           ))}
           {q && data && data.items.length === 0 ? (

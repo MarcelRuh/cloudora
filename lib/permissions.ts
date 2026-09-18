@@ -59,8 +59,8 @@ export type PermissionGroupId = "files" | "folders" | "shares" | "downloads" | "
 export const PERMISSION_GROUPS: Array<{ id: PermissionGroupId; label: string }> = [
   { id: "files", label: "Dateien" },
   { id: "folders", label: "Ordner" },
-  { id: "shares", label: "Freigaben" },
-  { id: "downloads", label: "One-Time-Downloads" },
+  { id: "shares", label: "Öffentliche Links" },
+  { id: "downloads", label: "Einmal-Links" },
   { id: "access", label: "Benutzer & Rollen" },
   { id: "system", label: "System" },
 ];

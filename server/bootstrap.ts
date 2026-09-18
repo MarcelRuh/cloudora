@@ -5,12 +5,12 @@ import { logger } from "@/server/logger";
 import { hashPassword } from "@/server/auth/password";
 import { ensureStorageLayout, sanitizeHomeRelPath, defaultHomePath } from "@/server/storage/scope";
 import { hydrateStoragePaths } from "@/server/storage/config";
-import { hydrateExtraVolumes } from "@/server/storage/extra-volumes";
+import { hydrateFolderShares } from "@/server/storage/folder-shares";
 
 export async function bootstrapCloudora(): Promise<void> {
   await hydrateStoragePaths();
-  await hydrateExtraVolumes();
   ensureStorageLayout();
+  await hydrateFolderShares();
   const env = getEnv();
 
   const adminRole = await prisma.role.upsert({
@@ -31,7 +31,7 @@ export async function bootstrapCloudora(): Promise<void> {
     create: {
       name: "Benutzer",
       slug: "user",
-      description: "Zugriff auf zugewiesene Dateien und Freigaben",
+      description: "Zugriff auf zugewiesene Dateien und Ordner",
       isSystem: true,
       permissions: [...USER_PERMISSIONS],
     },

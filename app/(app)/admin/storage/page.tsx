@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ExtraVolumesEditor, type ExtraVolume } from "@/components/admin/extra-volumes-editor";
+import { AccessHint } from "@/components/admin/access-guide";
 import { PathPickerField } from "@/components/admin/path-picker";
+import { FolderSharesEditor } from "@/components/admin/folder-shares-editor";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SegmentTabs } from "@/components/ui/tabs";
@@ -21,7 +22,7 @@ type PathStatus = {
   linked?: boolean;
   live?: boolean;
 };
-type StorageTab = "overview" | "paths" | "volumes" | "homes";
+type StorageTab = "overview" | "shares" | "paths" | "homes";
 
 type DiskSnapshot = {
   id: string;
@@ -41,7 +42,6 @@ type Storage = {
   hostStorage: string;
   usersDir: string;
   sharedDir: string;
-  extraVolumes: ExtraVolume[];
   storageStatus: PathStatus;
   usersDirStatus: PathStatus;
   sharedDirStatus: PathStatus;
@@ -59,7 +59,7 @@ type Storage = {
 export default function StoragePage() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-storage"], queryFn: () => api<Storage>("/api/admin/storage") });
-  const [tab, setTab] = useState<StorageTab>("overview");
+  const [tab, setTab] = useState<StorageTab>("shares");
   const [storagePath, setStoragePath] = useState("");
   const [usersDir, setUsersDir] = useState("");
   const [sharedDir, setSharedDir] = useState("");
@@ -91,18 +91,22 @@ export default function StoragePage() {
       <div>
         <p className="cloudora-section">Administration</p>
         <h1 className="cloudora-title mt-1 text-3xl md:text-4xl">Speicher</h1>
-        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Host-Ordner unter /mnt, /media und /srv sind im Container direkt schreibbar — ohne Extra-Compose und ohne Neustart. Im Explorer erscheinen sie unter /volumes/…, wenn du sie als Host-Ordner einträgst.
-        </p>
+        <div className="mt-2 max-w-2xl space-y-2">
+          <AccessHint />
+          <p className="text-sm text-muted-foreground">
+            Zuerst unter <span className="font-medium text-foreground">Ordnerzugriff</span> zuweisen, was im Explorer
+            erscheint. Persönliches Home ist optional. Öffentliche URLs gehören nicht hierher.
+          </p>
+        </div>
       </div>
 
       <SegmentTabs
         value={tab}
         onChange={setTab}
         tabs={[
-          { id: "overview", label: "Übersicht" },
+          { id: "shares", label: "Ordnerzugriff" },
+          { id: "overview", label: "Datenträger" },
           { id: "paths", label: "Standard-Pfade" },
-          { id: "volumes", label: "Host-Ordner" },
           { id: "homes", label: "Benutzer-Homes" },
         ]}
       />
@@ -124,22 +128,11 @@ export default function StoragePage() {
             <StatusRow label="Storage-Root" value={data?.storagePath} status={data?.storageStatus} />
             <StatusRow label="Benutzer-Ordner" value={data?.usersDir} status={data?.usersDirStatus} />
             <StatusRow label="Shared-Ordner" value={data?.sharedDir} status={data?.sharedDirStatus} />
-            {(data?.extraVolumes ?? []).length > 0 ? (
-              <ul className="mt-2 space-y-2">
-                {data?.extraVolumes.map((vol) => (
-                  <li key={vol.id} className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-primary">Host-Ordner</p>
-                    <p className="font-mono text-sm">{vol.hostPath}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {vol.name} → /volumes/{vol.id}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
           </Card>
         </div>
       ) : null}
+
+      {tab === "shares" ? <FolderSharesEditor /> : null}
 
       {tab === "paths" ? (
         <Card>
@@ -151,15 +144,15 @@ export default function StoragePage() {
             }}
           >
             <p className="text-sm text-muted-foreground">
-              Dateien liegen auf dem Docker-Volume (hier: Host-Pfad aus CLOUDORA_HOST_STORAGE). Unterordner relativ speichern (users, shared). Andere Host-Ordner werden nur gelinkt, wenn sie außerhalb dieses Volumes liegen.
+              Interner App-Speicher (Papierkorb, optionale Homes). Datenplatten unter Ordnerzugriff anbinden, nicht hier.
             </p>
             <PathPickerField
               label="Storage-Root"
               value={storagePath}
               onChange={setStoragePath}
               storageRoot={storagePath}
-              placeholder="/storage"
-              hint="Absoluter Linux-Pfad im Container. Muss dem Docker-Volume entsprechen."
+              placeholder="/home/cloudora/storage"
+              hint="Absoluter Linux-Pfad. Native: z. B. /home/cloudora/storage."
             />
             <PathPickerField
               label="Benutzer-Ordner"
@@ -169,7 +162,7 @@ export default function StoragePage() {
               preferRelative
               volumeRootRelative="users"
               placeholder="users oder /home"
-              hint="Relativ zum Storage-Root (users). Der Host-Bind (CLOUDORA_HOST_STORAGE) ist bereits das Volume."
+              hint="Relativ zum Storage-Root (users)."
             />
             <PathPickerField
               label="Shared-Ordner"
@@ -179,7 +172,7 @@ export default function StoragePage() {
               preferRelative
               volumeRootRelative="shared"
               placeholder="shared"
-              hint="Relativ zum Storage-Root (shared). Derselbe Host-Ordner wie das Volume nicht extra linken."
+              hint="Relativ zum Storage-Root (shared)."
             />
             <Button type="submit" disabled={save.isPending}>
               {save.isPending ? "…" : "Pfade speichern"}
@@ -188,14 +181,12 @@ export default function StoragePage() {
         </Card>
       ) : null}
 
-      {tab === "volumes" ? (
-        <ExtraVolumesEditor volumes={data?.extraVolumes ?? []} storagePath={data?.storagePath || "/storage"} />
-      ) : null}
-
       {tab === "homes" ? (
         <Card className="overflow-x-auto p-0">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <p className="text-sm text-muted-foreground">Homes werden unter Benutzer bearbeitet.</p>
+            <p className="text-sm text-muted-foreground">
+              Nur persönliche Homes. Gemeinsame Host-Ordner stehen unter Ordnerzugriff.
+            </p>
             <Link href="/admin/users" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
               Benutzer verwalten
             </Link>
@@ -264,17 +255,10 @@ function StatusRow({ label, value, status }: { label: string; value?: string; st
 
 function StatusLine({ status }: { status?: PathStatus }) {
   if (!status) return null;
-  if (status.linked && status.live && status.writable) {
-    return <p className="text-xs text-success">Vorhanden und beschreibbar</p>;
+  if (!status.exists) {
+    return <p className="text-xs text-muted-foreground">Existiert noch nicht — wird beim Speichern angelegt, falls berechtigt.</p>;
   }
-  if (status.linked && !status.live) {
-    return <p className="text-xs text-warning">Volume eingetragen — Bind-Mount ausstehend.</p>;
-  }
-  if (status.hostBrowse && status.exists) {
-    return <p className="text-xs text-warning">Auf dem Host vorhanden — beim Speichern als Volume linken.</p>;
-  }
-  if (!status.exists) return <p className="text-xs text-warning">Pfad existiert noch nicht — wird beim Speichern angelegt, falls berechtigt.</p>;
   if (!status.isDirectory) return <p className="text-xs text-destructive">Kein Verzeichnis</p>;
-  if (!status.writable) return <p className="text-xs text-warning">Nicht beschreibbar</p>;
+  if (!status.writable) return <p className="text-xs text-warning">Vorhanden, nicht beschreibbar</p>;
   return <p className="text-xs text-success">Vorhanden und beschreibbar</p>;
 }

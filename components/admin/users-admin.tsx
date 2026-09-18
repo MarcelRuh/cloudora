@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import Link from "next/link";
 import { PathPickerField } from "@/components/admin/path-picker";
 import { QuotaField } from "@/components/admin/quota-field";
 import { Button } from "@/components/ui/button";
@@ -91,7 +92,7 @@ export function UsersAdmin() {
       });
     },
     onSuccess: () => {
-      toast.success("Gespeichert");
+      toast.success(creating ? "Benutzer angelegt. Als Nächstes: Ordnerzugriff unter Speicher." : "Gespeichert");
       closeEditor();
       qc.invalidateQueries({ queryKey: ["users"] });
     },
@@ -120,6 +121,13 @@ export function UsersAdmin() {
         <div>
           <p className="cloudora-section">Administration</p>
           <h1 className="cloudora-title text-2xl">Benutzer</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Schritt 1: Konto anlegen. Explorer-Ordner danach unter{" "}
+            <Link href="/admin/storage" className="font-medium text-foreground underline-offset-2 hover:underline">
+              Speicher → Ordnerzugriff
+            </Link>
+            .
+          </p>
         </div>
         <Button
           onClick={() => {
@@ -233,6 +241,13 @@ export function UsersAdmin() {
             ) : null}
             {tab === "storage" ? (
             <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Home ist der persönliche Ordner dieses Kontos. Gemeinsame oder Host-Ordner weist du unter{" "}
+                <Link href="/admin/storage" className="font-medium text-foreground underline-offset-2 hover:underline">
+                  Speicher → Ordnerzugriff
+                </Link>{" "}
+                zu — nicht hier.
+              </p>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={Boolean(editing.homePathEnabled)} onChange={(e) => setEditing({ ...editing, homePathEnabled: e.target.checked })} />
                 Persönlicher Home-Pfad aktiviert
@@ -256,15 +271,19 @@ export function UsersAdmin() {
             </div>
             ) : null}
             {tab === "rights" ? (
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Was das Konto grundsätzlich darf. Das weist noch keinen Ordner im Explorer zu.
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-sm">
               {(
                 [
                   ["canUpload", "Upload"],
                   ["canDownload", "Download"],
                   ["canDelete", "Löschen"],
                   ["canEdit", "Bearbeiten"],
-                  ["canShare", "Freigaben"],
-                  ["canOneTimeDownload", "One-Time-Downloads"],
+                  ["canShare", "Öffentliche Links"],
+                  ["canOneTimeDownload", "Einmal-Links"],
                 ] as const
               ).map(([key, label]) => (
                 <label key={key} className="flex items-center gap-2">
@@ -272,6 +291,7 @@ export function UsersAdmin() {
                   {label}
                 </label>
               ))}
+              </div>
             </div>
             ) : null}
             </div>

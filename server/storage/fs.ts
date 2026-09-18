@@ -50,9 +50,23 @@ export async function copyPath(from: string, to: string): Promise<void> {
   await fs.cp(from, to, { recursive: true, errorOnExist: true, force: false });
 }
 
-export async function writeStreamToFile(absPath: string, stream: Readable, maxBytes: number): Promise<number> {
+export async function writeStreamToFile(
+  absPath: string,
+  stream: Readable,
+  maxBytes: number,
+  flags: "w" | "wx" = "w",
+): Promise<number> {
   await ensureDir(path.dirname(absPath));
-  const handle = await fs.open(absPath, "w");
+  let handle;
+  try {
+    handle = await fs.open(absPath, flags);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+    if (code === "EEXIST") {
+      throw new AppError("ALREADY_EXISTS", "Ein Eintrag mit diesem Namen existiert bereits.", 409);
+    }
+    throw error;
+  }
   const dest = handle.createWriteStream();
   let written = 0;
   stream.on("data", (chunk: Buffer) => {

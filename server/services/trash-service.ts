@@ -2,10 +2,11 @@ import path from "node:path";
 import { AppError } from "@/lib/errors";
 import type { SessionUser } from "@/lib/types";
 import { prisma } from "@/server/db";
-import { ensureDir, pathExists, removePath, renamePath, statOrNull } from "@/server/storage/fs";
+import { ensureDir, pathExists, removePath, renamePath, statOrNull, directorySize } from "@/server/storage/fs";
 import { storageRootAbs } from "@/server/storage/config";
 import { resolveScopedPath, childVirtual, virtualDirname } from "@/server/storage/path-resolver";
 import { scopeForUser } from "@/server/storage/scope";
+import { numberedFileName } from "@/server/storage/names";
 import { bumpUsedBytes } from "@/server/storage/quota";
 import { userHasPermission } from "@/lib/permissions";
 
@@ -32,12 +33,7 @@ async function uniqueRestoreName(user: SessionUser, parentVirtual: string, name:
   let candidate = name;
   let i = 1;
   while (await pathExists(resolveOwned(user, childVirtual(parentVirtual, candidate)).absPath)) {
-    const dot = name.lastIndexOf(".");
-    if (dot > 0 && !name.startsWith(".")) {
-      candidate = `${name.slice(0, dot)} (${i})${name.slice(dot)}`;
-    } else {
-      candidate = `${name} (${i})`;
-    }
+    candidate = numberedFileName(name, i);
     i += 1;
     if (i > 50) throw new AppError("ALREADY_EXISTS", "Wiederherstellen nicht möglich: Name existiert bereits.", 409);
   }
@@ -52,7 +48,7 @@ export async function moveToTrash(user: SessionUser, virtualPath: string) {
   if (!userHasPermission(user, stat.isDirectory() ? "folders.delete" : "files.delete")) {
     throw new AppError("FORBIDDEN", "Dafür fehlen dir die Berechtigungen.", 403);
   }
-  const size = stat.isDirectory() ? 0 : Number(stat.size);
+  const size = stat.isDirectory() ? Number(await directorySize(resolved.absPath, resolved.absPath)) : Number(stat.size);
   const item = await prisma.trashItem.create({
     data: {
       userId: user.id,
@@ -118,7 +114,7 @@ export async function purgeTrashItem(user: SessionUser, id: string) {
   await removePath(source).catch(() => undefined);
   await removePath(path.dirname(source)).catch(() => undefined);
   await prisma.trashItem.delete({ where: { id: row.id } });
-  if (!row.isDir && Number(row.size) > 0) await bumpUsedBytes(user.id, -Number(row.size));
+  if (Number(row.size) > 0) await bumpUsedBytes(user.id, -Number(row.size));
 }
 
 export async function emptyTrash(user: SessionUser) {
@@ -136,7 +132,7 @@ export async function purgeExpiredTrash(userId?: string) {
     const source = trashItemAbs(row.userId, row.id, row.name);
     await removePath(source).catch(() => undefined);
     await removePath(path.dirname(source)).catch(() => undefined);
-    if (!row.isDir && Number(row.size) > 0) await bumpUsedBytes(row.userId, -Number(row.size));
+    if (Number(row.size) > 0) await bumpUsedBytes(row.userId, -Number(row.size));
     await prisma.trashItem.delete({ where: { id: row.id } }).catch(() => undefined);
   }
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Cloudora one-line installer
+# Cloudora installer — native (Node + PostgreSQL + systemd) by default.
+# CLOUDORA_INSTALL_MODE=docker keeps the Compose stack.
 #
 # wget -qO- https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/install.sh | bash
 set -euo pipefail
@@ -7,8 +8,9 @@ set -euo pipefail
 REPO_URL="${CLOUDORA_REPO_URL:-https://github.com/MarcelRuh/cloudora.git}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MODE="${CLOUDORA_INSTALL_MODE:-native}"
 
-if [[ -f "${SOURCE_ROOT}/docker-compose.yml" && -f "${SOURCE_ROOT}/package.json" ]]; then
+if [[ -f "${SOURCE_ROOT}/package.json" ]]; then
   DEFAULT_DIR="${SOURCE_ROOT}"
 else
   DEFAULT_DIR="/opt/cloudora"
@@ -21,23 +23,72 @@ die() { echo "Fehler: $*" >&2; exit 1; }
 
 need_root() {
   if [[ "$(id -u)" -ne 0 ]]; then
-    die "Dieses Skript muss als root laufen (sudo), damit Docker installiert werden kann."
+    die "Dieses Skript muss als root laufen (sudo)."
   fi
+}
+
+env_get() {
+  local key="$1" fallback="${2:-}"
+  local value=""
+  if [[ -f .env ]]; then
+    value="$(awk -F= -v k="$key" '$1==k {sub(/^[^=]+=/, ""); print; exit}' .env 2>/dev/null || true)"
+    value="${value%\"}"
+    value="${value#\"}"
+    value="${value%\'}"
+    value="${value#\'}"
+  fi
+  echo "${value:-$fallback}"
 }
 
 install_base_packages() {
   if command -v apt-get >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
-    apt-get install -y -qq wget git ca-certificates openssl
+    apt-get install -y -qq wget git ca-certificates openssl curl build-essential python3
   elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y wget git ca-certificates openssl
+    dnf install -y wget git ca-certificates openssl curl
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y wget git ca-certificates openssl
+    yum install -y wget git ca-certificates openssl curl
   fi
   command -v wget >/dev/null || die "wget fehlt"
   command -v git >/dev/null || die "git fehlt"
   command -v openssl >/dev/null || die "openssl fehlt"
+}
+
+install_node() {
+  if command -v node >/dev/null 2>&1; then
+    local major
+    major="$(node -p "process.versions.node.split('.')[0]" 2>/dev/null || echo 0)"
+    if [[ "$major" -ge 20 ]]; then
+      log "Node.js $(node -v)"
+      return
+    fi
+  fi
+  log "Installiere Node.js 22…"
+  if command -v apt-get >/dev/null 2>&1; then
+    wget -qO- https://deb.nodesource.com/setup_22.x | bash -
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get install -y -qq nodejs
+  else
+    die "Node.js 22 manuell installieren."
+  fi
+  command -v node >/dev/null || die "Node.js fehlt"
+  command -v npm >/dev/null || die "npm fehlt"
+}
+
+install_postgres() {
+  if command -v psql >/dev/null 2>&1 && systemctl is-active --quiet postgresql 2>/dev/null; then
+    log "PostgreSQL läuft bereits."
+    return
+  fi
+  log "Installiere PostgreSQL…"
+  if command -v apt-get >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get install -y -qq postgresql postgresql-contrib
+  else
+    die "PostgreSQL manuell installieren."
+  fi
+  systemctl enable --now postgresql
 }
 
 docker_ready() {
@@ -47,50 +98,18 @@ docker_ready() {
 install_docker() {
   if docker_ready; then
     log "Docker und Compose sind bereits installiert."
-    docker --version
-    docker compose version
     return
   fi
-
   log "Installiere Docker Engine + Compose Plugin…"
-  if [[ -r /etc/os-release ]]; then
-    # shellcheck disable=SC1091
-    . /etc/os-release
-  fi
-
   wget -qO- https://get.docker.com | sh
-
-  if command -v systemctl >/dev/null 2>&1; then
-    systemctl enable docker >/dev/null 2>&1 || true
-    systemctl start docker >/dev/null 2>&1 || true
-  fi
-
-  if ! command -v docker >/dev/null 2>&1; then
-    log "get.docker.com hat Docker nicht bereitgestellt, versuche Distro-Pakete…"
-    if command -v apt-get >/dev/null 2>&1; then
-      export DEBIAN_FRONTEND=noninteractive
-      apt-get update -qq
-      apt-get install -y -qq docker.io docker-compose-plugin || apt-get install -y -qq docker.io docker-compose
-    fi
-  fi
-
-  if ! docker compose version >/dev/null 2>&1; then
-    log "Nachinstalliere Docker Compose Plugin…"
-    if command -v apt-get >/dev/null 2>&1; then
-      export DEBIAN_FRONTEND=noninteractive
-      apt-get update -qq
-      apt-get install -y -qq docker-compose-plugin
-    fi
-  fi
-
+  systemctl enable docker >/dev/null 2>&1 || true
+  systemctl start docker >/dev/null 2>&1 || true
   docker_ready || die "Docker Compose ist nach der Installation nicht verfügbar."
-  docker --version
-  docker compose version
 }
 
 sync_sources() {
   mkdir -p "$(dirname "$DIR")"
-  if [[ -d "${DIR}/.git" || -f "${DIR}/docker-compose.yml" ]]; then
+  if [[ -d "${DIR}/.git" || -f "${DIR}/package.json" ]]; then
     log "Verwende vorhandenes Cloudora-Verzeichnis: ${DIR}"
     cd "$DIR"
     return
@@ -98,21 +117,6 @@ sync_sources() {
   log "Klone Cloudora nach ${DIR}…"
   git clone "$REPO_URL" "$DIR"
   cd "$DIR"
-}
-
-host_storage_from_env() {
-  local value="./storage"
-  if [[ -f .env ]]; then
-    value="$(awk -F= '/^CLOUDORA_HOST_STORAGE=/{v=$2} END{print v}' .env 2>/dev/null || true)"
-    value="${value%\"}"
-    value="${value#\"}"
-    value="${value%\'}"
-    value="${value#\'}"
-  fi
-  if [[ -n "${CLOUDORA_HOST_STORAGE:-}" ]]; then
-    value="$CLOUDORA_HOST_STORAGE"
-  fi
-  echo "${value:-./storage}"
 }
 
 prepare_env() {
@@ -125,18 +129,85 @@ prepare_env() {
     log "SESSION_SECRET und ENCRYPTION_KEY wurden generiert."
     log "Bitte BOOTSTRAP_ADMIN_PASSWORD in .env alsbald ändern."
   fi
-  local host_storage
-  host_storage="$(host_storage_from_env)"
-  mkdir -p /mnt /media /srv
-  mkdir -p "$host_storage"
-  log "Storage-Mount: ${host_storage}"
   if ! grep -q '^CLOUDORA_INSTALL_DIR=' .env 2>/dev/null; then
     echo "CLOUDORA_INSTALL_DIR=${DIR}" >> .env
   fi
+  if [[ "$MODE" == "native" ]]; then
+    if grep -q '^CLOUDORA_RUNTIME=' .env; then
+      sed -i 's/^CLOUDORA_RUNTIME=.*/CLOUDORA_RUNTIME=native/' .env
+    else
+      echo "CLOUDORA_RUNTIME=native" >> .env
+    fi
+    if grep -q '^CLOUDORA_STORAGE_PATH=/storage$' .env || ! grep -q '^CLOUDORA_STORAGE_PATH=' .env; then
+      if grep -q '^CLOUDORA_STORAGE_PATH=' .env; then
+        sed -i "s|^CLOUDORA_STORAGE_PATH=.*|CLOUDORA_STORAGE_PATH=${DIR}/storage|" .env
+      else
+        echo "CLOUDORA_STORAGE_PATH=${DIR}/storage" >> .env
+      fi
+    fi
+    if grep -q '^CLOUDORA_HOST_STORAGE=' .env; then
+      sed -i "s|^CLOUDORA_HOST_STORAGE=.*|CLOUDORA_HOST_STORAGE=${DIR}/storage|" .env
+    else
+      echo "CLOUDORA_HOST_STORAGE=${DIR}/storage" >> .env
+    fi
+  fi
+  mkdir -p "$(env_get CLOUDORA_STORAGE_PATH "${DIR}/storage")"
   chmod +x scripts/*.sh 2>/dev/null || true
 }
 
-start_stack() {
+setup_postgres_db() {
+  local db_user db_pass db_name
+  db_user="$(env_get POSTGRES_USER cloudora)"
+  db_pass="$(env_get POSTGRES_PASSWORD cloudora)"
+  db_name="$(env_get POSTGRES_DB cloudora)"
+  log "Lege PostgreSQL-Datenbank ${db_name} an…"
+  sudo -u postgres psql -v ON_ERROR_STOP=1 <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${db_user}') THEN
+    CREATE ROLE ${db_user} LOGIN PASSWORD '${db_pass}';
+  ELSE
+    ALTER ROLE ${db_user} WITH LOGIN PASSWORD '${db_pass}';
+  END IF;
+END
+\$\$;
+SELECT 'CREATE DATABASE ${db_name} OWNER ${db_user}'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${db_name}')\gexec
+GRANT ALL PRIVILEGES ON DATABASE ${db_name} TO ${db_user};
+SQL
+  if grep -q '^DATABASE_URL=' .env; then
+    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://${db_user}:${db_pass}@127.0.0.1:5432/${db_name}?schema=public|" .env
+  else
+    echo "DATABASE_URL=postgresql://${db_user}:${db_pass}@127.0.0.1:5432/${db_name}?schema=public" >> .env
+  fi
+}
+
+install_systemd() {
+  local unit="/etc/systemd/system/cloudora.service"
+  sed "s|/opt/cloudora|${DIR}|g" "${DIR}/scripts/cloudora.service" > "$unit"
+  chmod +x "${DIR}/scripts/cloudora-run.sh"
+  systemctl daemon-reload
+  systemctl enable cloudora
+}
+
+start_native() {
+  log "Installiere npm-Abhängigkeiten und baue Cloudora…"
+  cd "$DIR"
+  npm ci
+  npx prisma generate
+  npx prisma migrate deploy
+  npx prisma db seed
+  npm run build
+  mkdir -p .next/standalone/.next
+  rm -rf .next/standalone/.next/static
+  cp -a .next/static .next/standalone/.next/static
+  install_systemd
+  systemctl restart cloudora
+  sleep 1
+  systemctl --no-pager --full status cloudora | head -20 || true
+}
+
+start_docker() {
   log "Starte Cloudora mit Docker Compose…"
   docker compose up -d --build
 }
@@ -145,7 +216,7 @@ print_done() {
   local ip
   ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
   echo
-  echo "Cloudora läuft."
+  echo "Cloudora läuft (${MODE})."
   echo "  Lokal:   http://127.0.0.1:3000"
   if [[ -n "${ip:-}" ]]; then
     echo "  Netzwerk: http://${ip}:3000"
@@ -153,12 +224,20 @@ print_done() {
   echo
   echo "Login: BOOTSTRAP_ADMIN_USERNAME / BOOTSTRAP_ADMIN_PASSWORD aus .env"
   echo "Passwort nach dem ersten Login ändern."
+  echo "Ordnerfreigaben: Administration → Speicher → Ordnerfreigaben"
 }
 
 need_root
 install_base_packages
-install_docker
 sync_sources
 prepare_env
-start_stack
+if [[ "$MODE" == "docker" ]]; then
+  install_docker
+  start_docker
+else
+  install_node
+  install_postgres
+  setup_postgres_db
+  start_native
+fi
 print_done

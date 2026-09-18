@@ -1,50 +1,36 @@
 # Storage
 
-Admins edit paths in **Administration → Speicher** and per-user homes in **Benutzer**. Changes are stored in the database (key `storage.paths`) and override `.env` at runtime.
+Admins edit the app storage root and user homes in **Administration → Speicher**. Explorer folders are **Ordnerfreigaben** (Samba-style named shares with read/write grants).
+
+## Ordnerfreigaben
+
+Each share has:
+
+- Display name and slug (virtual path `/slug`)
+- Absolute host path (e.g. `/mnt/cloudora`)
+- Grants: role or user, `READ` or `WRITE`, optional `subPath` relative to the share (empty = entire share)
+
+A grant on `/mnt/cloudora/shared/test` (subPath `shared/test`) shows only that folder in the explorer. Parent folders like `shared` stay hidden.
+
+Administrators always have write access to the full share. The explorer root lists only granted folders, plus **Home** if the user has a home path enabled. `/mnt`, `/media` and `/srv` are not injected automatically.
+
+Virtual listing paths stay POSIX `/…`. File APIs never return absolute paths to regular clients. Admins may see the host path on a share badge.
 
 ## Storage root
 
-Absolute path **inside** the process/container. Examples: `/storage`, `/home`, `/mnt/data`.
+Absolute path of the process. Native examples: `/opt/cloudora/storage`, `/home/cloudora/storage`. Used for trash, default homes, and indexes — not as the explorer catalog.
 
-Administrators browse this root. Docker: the path must exist in the container (bind-mount).
-
-`CLOUDORA_HOST_STORAGE` (default `./storage`) is the **host** path Compose bind-mounts onto `CLOUDORA_STORAGE_PATH` (default `/storage`). That can be the install disk, an NFS share, a USB disk, or a hypervisor bind (Proxmox/LXC/…). If it already *is* your data disk, do not link the same path again as an extra volume.
-
-Compose always bind-mounts `/mnt`, `/media` and `/srv` read-write at the same paths. Creating folders and using those trees does not require a container restart. `/` is still listed via the read-only `/host` browse bind.
-
-Additional host folders for the explorer: **Administration → Speicher → Host-Ordner**. Paths under `/mnt`, `/media` or `/srv` are used immediately. Only unusual paths (e.g. `/home/data`) still write `docker-compose.cloudora-volumes.yml` and recreate the app container.
-
-To use the host `/home` directory:
-
-```yaml
-# docker-compose.override.yml
-services:
-  cloudora:
-    volumes:
-      - /home:/home
-```
-
-Then set Storage-Root or a user Home-Pfad to `/home`.
-
-## Extra volumes
-
-Admins link additional host directories in **Administration → Speicher → Host-Ordner**. Paths under `/mnt`, `/media` or `/srv` are live immediately. Other host paths still use `docker-compose.cloudora-volumes.yml`. Linked folders appear in the explorer under `/volumes/{id}`.
-
-The path picker tab **Linux /** lists the **host** root via a read-only bind `/:/host`. You can pick `/mnt/hdd`, `/home`, … — not `/` itself.
+`CLOUDORA_STORAGE_PATH` is that path. `CLOUDORA_HOST_STORAGE` is the display/compose counterpart.
 
 ## User homes
 
 `homePath` may be:
 
-- Absolute: `/home`, `/home/anna`, `/mnt/nas/photos`
+- Absolute: `/home/anna`, `/mnt/nas/photos`
 - Relative to the storage root: `users/anna`
 
-The user sees that directory as virtual `/`. `..` and symlink escapes are rejected. `/` alone is not allowed.
+Shown in the explorer as `/Home` when `homePathEnabled` is true.
 
-Default for new users: `{usersDir}/{username}` (if `usersDir` is `/home`, that becomes `/home/anna`).
+Default for new users: `{usersDir}/{username}`.
 
-Virtual listing paths stay POSIX `/…`. File APIs never return absolute paths to regular clients.
-
-Quotas (`quotaBytes`, `null` = unlimited) are enforced on upload/copy/edit. Used bytes live on `User.usedBytes` and can be recomputed by walking the home directory.
-
-The `FileIndex` table speeds search and dashboard counts; the filesystem remains the source of truth for listings.
+Quotas (`quotaBytes`, `null` = unlimited) are enforced on upload/copy/edit.

@@ -114,7 +114,7 @@ export function SystemView() {
             </p>
           ) : null}
           <p className="mt-4 text-xs text-muted-foreground">
-            `/mnt`, `/media` und `/srv` sind im Container schreibbar. Weitere ungewöhnliche Pfade als Host-Ordner linken.
+            `/mnt` ist im Explorer immer da. `/media` und `/srv` ebenfalls, falls vorhanden.
           </p>
         </Card>
         <Card className="md:col-span-2">

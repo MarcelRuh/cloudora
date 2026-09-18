@@ -1,7 +1,9 @@
 import Busboy from "busboy";
 import { Readable } from "node:stream";
-import { AppError } from "@/lib/errors";
-import { jsonError, jsonOk } from "@/server/http";
+import { AppError, isAppError } from "@/lib/errors";
+import { writeAudit } from "@/server/audit";
+import { withPublicUnlock } from "@/server/auth/public-access";
+import { clientIp, jsonError, jsonOk } from "@/server/http";
 import { uploadPublicShare } from "@/server/services/share-service";
 import { assertSafeFileName } from "@/server/storage/path-resolver";
 
@@ -9,6 +11,7 @@ type Ctx = { params: Promise<{ token: string }> };
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 3600;
 
 export async function POST(request: Request, ctx: Ctx) {
   try {
@@ -49,7 +52,9 @@ export async function POST(request: Request, ctx: Ctx) {
         const fileName = assertSafeFileName(info.filename || "upload.bin");
         uploads.push(
           waitForPassword().then(() =>
-            uploadPublicShare(token, fields.password, fileName, file, fields.relative || "/"),
+            withPublicUnlock("s", token, (unlocked) =>
+              uploadPublicShare(token, fields.password, fileName, file, fields.relative || "/", unlocked),
+            ),
           ),
         );
       });
@@ -62,6 +67,9 @@ export async function POST(request: Request, ctx: Ctx) {
     if (!entry) throw new AppError("VALIDATION_ERROR", "Keine Datei.", 400);
     return jsonOk({ entry }, 201);
   } catch (error) {
+    if (isAppError(error) && error.code === "INVALID_PASSWORD") {
+      await writeAudit({ ip: await clientIp(), action: "SHARE_AUTH_FAILED", result: "FAILURE" });
+    }
     return jsonError(error);
   }
 }
