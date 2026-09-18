@@ -6,11 +6,18 @@
 set -euo pipefail
 
 REPO_URL="${CLOUDORA_REPO_URL:-https://github.com/MarcelRuh/cloudora.git}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SOURCE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MODE="${CLOUDORA_INSTALL_MODE:-native}"
 
-if [[ -f "${SOURCE_ROOT}/package.json" ]]; then
+# wget|bash setzt BASH_SOURCE nicht (und $0 ist oft "main").
+SOURCE_ROOT=""
+_src="${BASH_SOURCE[0]:-}"
+if [[ -n "$_src" && -f "$_src" && "$_src" != /dev/fd/* && "$_src" != /proc/self/fd/* ]]; then
+  SOURCE_ROOT="$(cd "$(dirname "$_src")/.." && pwd)"
+elif [[ -f "${PWD}/package.json" && -f "${PWD}/scripts/install.sh" ]]; then
+  SOURCE_ROOT="$PWD"
+fi
+
+if [[ -n "$SOURCE_ROOT" && -f "${SOURCE_ROOT}/package.json" ]]; then
   DEFAULT_DIR="${SOURCE_ROOT}"
 else
   DEFAULT_DIR="/opt/cloudora"
@@ -44,7 +51,7 @@ install_base_packages() {
   if command -v apt-get >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
-    apt-get install -y -qq wget git ca-certificates openssl curl build-essential python3
+    apt-get install -y -qq wget git ca-certificates openssl curl build-essential python3 sudo
   elif command -v dnf >/dev/null 2>&1; then
     dnf install -y wget git ca-certificates openssl curl
   elif command -v yum >/dev/null 2>&1; then
@@ -89,6 +96,27 @@ install_postgres() {
     die "PostgreSQL manuell installieren."
   fi
   systemctl enable --now postgresql
+  local i
+  for i in $(seq 1 30); do
+    if as_postgres pg_isready -q 2>/dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  as_postgres pg_isready -q 2>/dev/null || die "PostgreSQL ist nach der Installation nicht erreichbar."
+}
+
+# Root-LXCs haben oft kein sudo; runuser/su reichen.
+as_postgres() {
+  if command -v runuser >/dev/null 2>&1; then
+    runuser -u postgres -- "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo -u postgres "$@"
+  elif [[ "$(id -u)" -eq 0 ]]; then
+    su -s /bin/sh postgres -c "$*"
+  else
+    die "Kann nicht als Benutzer postgres ausführen (runuser/sudo fehlen)."
+  fi
 }
 
 docker_ready() {
@@ -161,7 +189,7 @@ setup_postgres_db() {
   db_pass="$(env_get POSTGRES_PASSWORD cloudora)"
   db_name="$(env_get POSTGRES_DB cloudora)"
   log "Lege PostgreSQL-Datenbank ${db_name} an…"
-  sudo -u postgres psql -v ON_ERROR_STOP=1 <<SQL
+  as_postgres psql -v ON_ERROR_STOP=1 <<SQL
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${db_user}') THEN
