@@ -1,10 +1,8 @@
 # Deployment
 
-Native systemd ist der Standard. Docker Compose bleibt optional.
+Native systemd: Node.js 22, PostgreSQL 16, `cloudora.service`.
 
-## Native (systemd)
-
-`scripts/install.sh` installiert Node.js 22, PostgreSQL und eine `cloudora.service`. Als root:
+`scripts/install.sh` als root:
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/install.sh | bash
@@ -25,28 +23,11 @@ systemctl status cloudora
 curl -sS http://127.0.0.1:3000/api/health
 ```
 
-## Docker Compose
-
-```bash
-sudo env CLOUDORA_INSTALL_MODE=docker bash scripts/install.sh
-```
-
-Oder manuell:
-
-```bash
-cp .env.example .env
-docker compose up -d --build
-```
-
-Production overlay: `docker-compose.prod.yml`.
-
-Der App-Container bekommt **kein** `docker.sock`. Self-Update läuft über den Sidecar `cloudora-updater`, nachdem die UI eine Signaldatei schreibt.
-
 Setze `PUBLIC_URL` auf den NPM-Hostnamen (`https://cloud.example.com`). `TRUST_PROXY=true` behalten.
 
-Der Container:
+Beim Start:
 
-1. Legt `{CLOUDORA_STORAGE_PATH}/{users,shared}` an (Ordnernamen konfigurierbar)
+1. Legt `{CLOUDORA_STORAGE_PATH}/{users,shared}` an
 2. Führt `prisma migrate deploy` aus
 3. Seedet den Bootstrap-Admin falls fehlend
 4. Startet Next.js auf Port 3000
@@ -54,7 +35,7 @@ Der Container:
 ## Nginx Proxy Manager
 
 - Scheme: http
-- Forward hostname: Host-IP (native) oder `cloudora` (Compose-Service)
+- Forward hostname: Host-IP
 - Forward port: `3000`
 - Websockets: off
 - SSL: NPM-Zertifikat
@@ -71,10 +52,10 @@ proxy_send_timeout 3600s;
 
 ## Persistence
 
-| Daten | Native | Docker |
-| --- | --- | --- |
-| Datenbank | lokale PostgreSQL | Volume `postgres_data` |
-| Dateien | `${CLOUDORA_STORAGE_PATH}` | `${CLOUDORA_HOST_STORAGE}` → `${CLOUDORA_STORAGE_PATH}` |
-| Secrets | `.env` | `.env` |
+| Daten | Pfad |
+| --- | --- |
+| Datenbank | lokale PostgreSQL |
+| Dateien | `${CLOUDORA_STORAGE_PATH}` |
+| Secrets | `.env` |
 
-Nicht über den App-Code bind-mounten. Updates ersetzen den Code, Volumes und `.env` bleiben.
+Updates ersetzen den Code. `.env`, PostgreSQL und der Storage-Ordner bleiben.

@@ -15,9 +15,6 @@ import {
   resolveConfiguredPath,
 } from "@/server/storage/configured-path";
 import { visibleFoldersForUser, getFolderShares, HOME_VIRTUAL_ROOT } from "@/server/storage/folder-shares";
-import { getEnv } from "@/server/env";
-import { isHostDataPath } from "@/server/storage/host-data";
-import { detectHostRoot, isHostBrowseFsPath, toFilesystemPath } from "@/server/storage/host-fs";
 import { type ExtraRoot, type StorageScope } from "@/server/storage/path-resolver";
 
 export { sharedDirName, usersDirName };
@@ -33,14 +30,6 @@ export function ensureStorageLayout(): void {
 }
 
 function mkdirWritable(absPath: string, label: string): void {
-  if (isHostDataPath(absPath) && getEnv().runtime !== "native") {
-    return;
-  }
-  const host = detectHostRoot();
-  const fsPath = toFilesystemPath(absPath, host);
-  if (isHostBrowseFsPath(fsPath, host)) {
-    return;
-  }
   try {
     fs.mkdirSync(absPath, { recursive: true });
   } catch {

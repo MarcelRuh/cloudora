@@ -4,7 +4,6 @@ import { getEnv } from "@/server/env";
 import { AppError } from "@/lib/errors";
 import { isBuildPhase } from "@/lib/utils";
 import { isAbsolutePosixPath, normalizeConfiguredPath, resolveConfiguredPath } from "@/server/storage/configured-path";
-import { remapConfiguredOntoHostStorage } from "@/server/storage/host-storage";
 import { inspectLinuxPath } from "@/server/storage/browse-linux";
 
 export const STORAGE_PATHS_KEY = "storage.paths";
@@ -55,7 +54,7 @@ export function resolveSharedDirAbs(): string {
 
 export function inspectPath(absPath: string): { exists: boolean; isDirectory: boolean; writable: boolean } {
   const cfg = getStoragePaths();
-  const inspected = inspectLinuxPath(absPath, cfg.storagePath, [], getEnv().hostStorage);
+  const inspected = inspectLinuxPath(absPath, cfg.storagePath);
   return { exists: inspected.exists, isDirectory: inspected.isDirectory, writable: inspected.writable };
 }
 
@@ -97,27 +96,10 @@ export async function hydrateStoragePaths(): Promise<StoragePaths> {
 
 export async function saveStoragePaths(input: Partial<StoragePaths>): Promise<StoragePaths> {
   const current = await hydrateStoragePaths();
-  const hostStorage = getEnv().hostStorage;
   const next: StoragePaths = {
-    storagePath:
-      input.storagePath != null
-        ? path.resolve(
-            requireAbsolutePath(
-              remapConfiguredOntoHostStorage(input.storagePath, hostStorage, current.storagePath),
-            ),
-          )
-        : current.storagePath,
-    usersDir:
-      input.usersDir != null
-        ? normalizeConfiguredPath(remapConfiguredOntoHostStorage(input.usersDir, hostStorage, "users"), current.usersDir)
-        : current.usersDir,
-    sharedDir:
-      input.sharedDir != null
-        ? normalizeConfiguredPath(
-            remapConfiguredOntoHostStorage(input.sharedDir, hostStorage, "shared"),
-            current.sharedDir,
-          )
-        : current.sharedDir,
+    storagePath: input.storagePath != null ? path.resolve(requireAbsolutePath(input.storagePath)) : current.storagePath,
+    usersDir: input.usersDir != null ? normalizeConfiguredPath(input.usersDir, current.usersDir) : current.usersDir,
+    sharedDir: input.sharedDir != null ? normalizeConfiguredPath(input.sharedDir, current.sharedDir) : current.sharedDir,
   };
   await prisma.setting.upsert({
     where: { key: STORAGE_PATHS_KEY },
@@ -132,7 +114,7 @@ export async function saveStoragePaths(input: Partial<StoragePaths>): Promise<St
 function requireAbsolutePath(input: string): string {
   const normalized = normalizeConfiguredPath(input);
   if (!isAbsolutePosixPath(normalized)) {
-    throw new AppError("INVALID_PATH", "Der Storage-Root muss ein absoluter Pfad sein, z. B. /storage oder /home.", 400);
+    throw new AppError("INVALID_PATH", "Der Storage-Root muss ein absoluter Pfad sein, z. B. /opt/cloudora/storage.", 400);
   }
   return normalized;
 }

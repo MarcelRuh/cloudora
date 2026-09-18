@@ -16,11 +16,13 @@ Administrators always have write access to the full share. The explorer root lis
 
 Virtual listing paths stay POSIX `/…`. File APIs never return absolute paths to regular clients. Admins may see the host path on a share badge.
 
+The path picker inspects the real host path. „Nicht beschreibbar“ means the Cloudora process (systemd, typically root) cannot write there — Unix mode, mount options (NFS `root_squash`, CIFS), not the Cloudora grant.
+
 ## Storage root
 
-Absolute path of the process. Native examples: `/opt/cloudora/storage`, `/home/cloudora/storage`. Used for trash, default homes, and indexes — not as the explorer catalog.
+Absolute path of the process. Examples: `/opt/cloudora/storage`, `/home/cloudora/storage`. Used for trash, default homes, and indexes — not as the explorer catalog.
 
-`CLOUDORA_STORAGE_PATH` is that path. `CLOUDORA_HOST_STORAGE` is the display/compose counterpart.
+`CLOUDORA_STORAGE_PATH` is that path.
 
 ## User homes
 

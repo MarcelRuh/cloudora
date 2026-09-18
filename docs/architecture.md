@@ -5,10 +5,9 @@ Cloudora is a Next.js 16 App Router application with PostgreSQL (Prisma) for met
 ```text
 Internet
   → Nginx Proxy Manager (TLS)
-    → cloudora:3000 (Next.js)
+    → Host:3000 (Next.js, systemd cloudora.service)
       → PostgreSQL
-      → /storage  (files)
-    → cloudora-updater (docker.sock + install dir; no app access)
+      → CLOUDORA_STORAGE_PATH (files)
 ```
 
 ## Layers

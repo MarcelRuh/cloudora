@@ -78,7 +78,6 @@ export function SystemView() {
           <dl className="mt-3 space-y-2 text-sm">
             <Row k="Node.js" v={data?.node} />
             <Row k="Uptime" v={data ? `${Math.floor(data.uptimeSeconds / 3600)}h ${Math.floor((data.uptimeSeconds % 3600) / 60)}m` : "—"} />
-            <Row k="Docker" v={data?.docker ? "ja" : "nein"} />
             <Row k="Datenbank" v={data?.database} />
             <Row k="DB-Größe" v={data?.databaseBytes != null ? formatBytes(data.databaseBytes) : "—"} />
           </dl>
@@ -86,8 +85,7 @@ export function SystemView() {
         <Card className="md:col-span-2">
           <p className="cloudora-section">Storage</p>
           <dl className="mt-3 grid gap-2 text-sm md:grid-cols-2">
-            <Row k="Host-Mount" v={data?.hostStorageConfigured} />
-            <Row k="Container-Pfad" v={data?.storagePathConfigured} />
+            <Row k="Speicherpfad" v={data?.storagePathConfigured} />
             <Row k="Benutzer-Ordner" v={data?.usersDir} />
             <Row k="Shared-Ordner" v={data?.sharedDir} />
             <Row k="Vorhanden" v={data?.storageExists ? "ja" : "nein"} />
@@ -110,11 +108,11 @@ export function SystemView() {
           ) : null}
           {data?.storageLow ? (
             <p className="mt-3 text-sm text-warning">
-              Speicherplatz knapp: weniger als 1 GB oder unter 10 % frei. Dateien oder den Host-Mount prüfen.
+              Speicherplatz knapp: weniger als 1 GB oder unter 10 % frei. Dateien oder den Speicherpfad prüfen.
             </p>
           ) : null}
           <p className="mt-4 text-xs text-muted-foreground">
-            `/mnt` ist im Explorer immer da. `/media` und `/srv` ebenfalls, falls vorhanden.
+            Im Explorer erscheinen nur zugewiesene Ordner (Administration → Speicher → Ordnerzugriff).
           </p>
         </Card>
         <Card className="md:col-span-2">
@@ -122,13 +120,13 @@ export function SystemView() {
           <p className="mt-2 text-sm text-muted-foreground">{backup.data?.note}</p>
           <dl className="mt-3 grid gap-2 text-sm md:grid-cols-2">
             <Row k="Letzter DB-Dump" v={backup.data?.lastBackupAt ? formatDateTime(backup.data.lastBackupAt) : "noch keiner"} />
-            <Row k="Dateien sichern unter" v={backup.data?.hostStorage} />
+            <Row k="Dateien sichern unter" v={backup.data?.storagePath || backup.data?.hostStorage} />
           </dl>
           <Button className="mt-4" disabled={dump.isPending} onClick={() => dump.mutate()}>
             {dump.isPending ? "Erzeuge Dump…" : "Datenbank als SQL herunterladen"}
           </Button>
           <p className="mt-3 text-xs text-muted-foreground">
-            Dateien liegen auf dem Host-Mount und gehören nicht in den SQL-Dump. Wiederherstellen nur manuell per `psql` und
+            Dateien liegen unter dem Speicherpfad und gehören nicht in den SQL-Dump. Wiederherstellen nur manuell per `psql` und
             Kopie des Storage-Ordners.
           </p>
         </Card>

@@ -28,7 +28,7 @@ export async function GET() {
       lastBackupAt: lastAt,
       hostStorage: env.hostStorage,
       storagePath: env.storagePath,
-      note: "Die Datenbank kannst du hier als SQL herunterladen. Dateien separat vom Host-Mount sichern.",
+      note: "Die Datenbank kannst du hier als SQL herunterladen. Dateien separat unter dem Speicherpfad sichern.",
     });
   } catch (error) {
     return jsonError(error);

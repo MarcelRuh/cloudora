@@ -53,7 +53,7 @@ export async function systemInfo() {
     disks,
     database: dbOk ? "online" : "offline",
     databaseBytes: dbSize,
-    docker: getEnv().runtime === "docker",
+    docker: false,
     publicUrl: env.publicUrl,
   };
 }

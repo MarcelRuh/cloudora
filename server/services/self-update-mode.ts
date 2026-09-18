@@ -1,17 +1,10 @@
-export type SelfUpdateMode = "native" | "docker" | "none";
-export type SelfUpdateSidecar = "ready" | "missing" | "host";
+export type SelfUpdateMode = "native" | "none";
 
-export function resolveSelfUpdateMode(sidecar: SelfUpdateSidecar, enabled: boolean): SelfUpdateMode {
-  if (!enabled) return "none";
-  if (sidecar === "ready") return "docker";
-  if (sidecar === "host") return "native";
-  return "none";
+export function resolveSelfUpdateMode(enabled: boolean): SelfUpdateMode {
+  return enabled ? "native" : "none";
 }
 
-export function selfUpdateUnavailableMessage(sidecar: SelfUpdateSidecar): string {
-  if (sidecar === "missing") {
-    return "Self-Update-Sidecar fehlt. Docker-Stack mit docker compose up -d neu erzeugen.";
-  }
+export function selfUpdateUnavailableMessage(): string {
   return "Self-Update nicht verfügbar. CLOUDORA_INSTALL_DIR auf den Installationspfad setzen (z. B. /opt/cloudora).";
 }
 

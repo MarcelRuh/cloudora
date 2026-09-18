@@ -1,10 +1,10 @@
 # Cloudora
 
-**Self-hosted Cloud Storage & File Explorer** – native auf Linux, optional Docker.
+**Self-hosted Cloud Storage & File Explorer** – native auf Linux (systemd).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> Status: **v1.3.12** – Self-Hosted Cloud Storage mit Ordnerzugriff, Papierkorb, 2FA, Backup und Self-Update.
+> Status: **v1.3.13** – Self-Hosted Cloud Storage mit Ordnerzugriff, Papierkorb, 2FA, Backup und Self-Update.
 
 Cloudora ist der zentrale Datei- und Cloud-Speicher der gleichen Software-Familie wie [Proxora](https://github.com/MarcelRuh/proxora): dunkles, technisches UI, klare Administration, Self-Hosting hinter Nginx Proxy Manager.
 
@@ -30,7 +30,7 @@ Repository: [github.com/MarcelRuh/cloudora](https://github.com/MarcelRuh/cloudor
 - Dashboard, Benutzerverwaltung, Quotas in MB/GB, Audit-Log, Systeminfos inkl. freiem Speicher
 - Datenbank-Backup in der UI (`pg_dump`); Dateien vom Host-Mount sichern
 - Globale Suche (`Ctrl+K`)
-- Native systemd oder optional Docker Compose; PostgreSQL, persistenter Storage, in-app Self-Update
+- Native systemd, PostgreSQL, persistenter Storage, in-app Self-Update
 
 ## Screenshots
 
@@ -88,12 +88,6 @@ cp .env.example .env
 sudo bash scripts/install.sh
 ```
 
-Docker bleibt optional:
-
-```bash
-sudo env CLOUDORA_INSTALL_MODE=docker bash scripts/install.sh
-```
-
 Anschließend:
 
 ```text
@@ -111,35 +105,23 @@ Siehe [`.env.example`](./.env.example). Wichtige Variablen:
 | `DATABASE_URL` | PostgreSQL-URL |
 | `SESSION_SECRET` | mind. 32 Zeichen |
 | `ENCRYPTION_KEY` | mind. 32 Zeichen |
-| `CLOUDORA_RUNTIME` | `native` (Standard) oder `docker` |
-| `CLOUDORA_STORAGE_PATH` | Absoluter App-Speicher (native z. B. `/opt/cloudora/storage`) |
-| `CLOUDORA_HOST_STORAGE` | Anzeige-/Compose-Hostpfad, Standard `./storage` |
+| `CLOUDORA_STORAGE_PATH` | Absoluter App-Speicher (z. B. `/opt/cloudora/storage`) |
 | `CLOUDORA_USERS_DIR` | Unterordner für Benutzer-Homes, Standard `users` |
 | `CLOUDORA_SHARED_DIR` | Interner Shared-Ordner, Standard `shared` |
 | `PUBLIC_URL` | Öffentliche URL hinter dem Reverse Proxy |
 | `TRUST_PROXY` | `true` hinter Nginx Proxy Manager |
 | `BOOTSTRAP_ADMIN_*` | Initialer Administrator (nur Seed) |
 | `MAX_UPLOAD_BYTES` | hartes Upload-Limit |
-| `CLOUDORA_INSTALL_DIR` | Checkout-Pfad für Self-Update (native z. B. `/opt/cloudora`) |
+| `CLOUDORA_INSTALL_DIR` | Checkout-Pfad für Self-Update (z. B. `/opt/cloudora`) |
 
 Keine Secrets in Git committen.
-
-## Docker Installation
-
-- `docker-compose.yml` – Standard
-- `docker-compose.prod.yml` – gleiche Stack-Struktur für Produktion
-
-Volumes:
-
-- PostgreSQL-Daten: Docker-Volume `postgres_data`
-- Dateien: `${CLOUDORA_HOST_STORAGE}` → `${CLOUDORA_STORAGE_PATH}` (Standard `./storage` → `/storage`)
 
 ## Nginx Proxy Manager
 
 Cloudora braucht **keinen** eigenen öffentlichen Reverse Proxy.
 
 ```text
-Internet → Nginx Proxy Manager → cloudora:3000
+Internet → Nginx Proxy Manager → Host:3000
 ```
 
 Forwarded Headers werden berücksichtigt:
@@ -150,7 +132,7 @@ Forwarded Headers werden berücksichtigt:
 
 In NPM:
 
-1. Proxy Host auf `cloudora` Port `3000` (Docker-Netz) oder Host-IP `:3000`
+1. Proxy Host auf die Host-IP, Port `3000`
 2. SSL-Zertifikat in NPM ausstellen (Let's Encrypt)
 3. Websocket nicht erforderlich
 4. `PUBLIC_URL=https://cloud.example.com` setzen
@@ -173,19 +155,10 @@ Der **Host-Pfad** ist frei wählbar – lokales Verzeichnis, extra Festplatte, N
 
 ```bash
 # .env
-CLOUDORA_HOST_STORAGE=/mnt/hdd/cloudora
-CLOUDORA_STORAGE_PATH=/storage
+CLOUDORA_STORAGE_PATH=/mnt/hdd/cloudora
 ```
 
-Danach Container neu erzeugen, damit der Bind-Mount greift:
-
-```bash
-docker compose up -d
-```
-
-`/mnt`, `/media` und `/srv` sind im Container schreibbar. Im Explorer erscheint `/mnt` (z. B. `/mnt/cloudora`) ohne Extra-Volume. `/host` bleibt nur zum Durchsuchen (lesen).
-
-Manuell weiterhin: `docker-compose.override.example.yml` nach `docker-compose.override.yml` kopieren.
+Im Explorer erscheinen nur zugewiesene Ordner (**Administration → Speicher → Ordnerzugriff**), nicht automatisch `/mnt`.
 
 Pfade sind in der UI änderbar: **Administration → Speicher** (Storage-Root, Benutzer-/Shared-Ordner) und **Benutzer → Home-Pfad**.
 
@@ -194,10 +167,8 @@ Home-Pfad Beispiele:
 - absolut: `/home`, `/home/anna`
 - relativ zum Storage-Root: `users/anna`
 
-Damit `/home` der Host ist, Volume `/home:/home` in der Override-Datei setzen.
-
 ```text
-/storage                  ← CLOUDORA_STORAGE_PATH (Container)
+/opt/cloudora/storage     ← CLOUDORA_STORAGE_PATH
 ├── users                 ← CLOUDORA_USERS_DIR
 │   ├── marcel
 │   └── user1
@@ -253,7 +224,7 @@ npm run typecheck
 
 ## Updating
 
-In der UI (empfohlen): **Administration → System → Jetzt aktualisieren**. Zeigt `current → latest`, Changelog und Fortschritt. Native startet den systemd-Dienst neu; Docker nutzt den Sidecar. `.env` und Storage bleiben.
+In der UI (empfohlen): **Administration → System → Jetzt aktualisieren**. Holt GitHub, baut nativ, startet `cloudora.service` neu. `.env` und Storage bleiben.
 
 CLI (erhält `.env` und Storage):
 
@@ -267,24 +238,17 @@ oder lokal:
 bash scripts/update.sh
 ```
 
-Docker optional:
-
-```bash
-git pull
-docker compose up -d --build
-```
-
-Prisma-Migrationen laufen beim Start (native via Update-Skript, Docker im Entrypoint).
+Prisma-Migrationen laufen im Update-Skript (`prisma migrate deploy`).
 
 ## Backup
 
 Sichern:
 
 1. In der UI: **Administration → System → Datenbank als SQL herunterladen** (`pg_dump`)
-2. Dateispeicher unter `CLOUDORA_HOST_STORAGE` (inkl. `.trash`)
+2. Dateispeicher unter `CLOUDORA_STORAGE_PATH` (inkl. `.trash`)
 3. `.env`
 
-Wiederherstellung: Dump per `psql` einspielen, Storage-Ordner zurückkopieren, `.env` legen, Stack starten. Es gibt absichtlich keinen Restore-Button in der UI.
+Wiederherstellung: Dump per `psql` einspielen, Storage-Ordner zurückkopieren, `.env` legen, `systemctl restart cloudora`. Es gibt absichtlich keinen Restore-Button in der UI.
 
 ## Documentation
 

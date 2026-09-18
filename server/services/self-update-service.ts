@@ -2,21 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { logger } from "@/server/logger";
-import {
-  isSignalDirReady,
-  isUpdateBusyFromSignal,
-  resolveUpdateSignalDir,
-  writeUpdateRequest,
-  writeUpdateTarget,
-} from "@/lib/self-update-signal";
-import {
-  APP_VERSION,
-  DEFAULT_GITHUB_BRANCH,
-  DEFAULT_GITHUB_REPO,
-  isSelfUpdateAvailable,
-  selfUpdateTargetVersion,
-} from "@/lib/version";
+import { APP_VERSION, DEFAULT_GITHUB_BRANCH, DEFAULT_GITHUB_REPO, isSelfUpdateAvailable, selfUpdateTargetVersion } from "@/lib/version";
 import {
   fetchGithubChangelog,
   fetchGithubCommitSha,
@@ -28,26 +14,17 @@ import {
   selfUpdateReadyMessage,
   selfUpdateUnavailableMessage,
   type SelfUpdateMode,
-  type SelfUpdateSidecar,
 } from "@/server/services/self-update-mode";
-import {
-  mergeProgress,
-  parseUpdaterLogs,
-  readComposeLogsFromDir,
-  readProgressFromDir,
-  REVISION_FILE,
-  type SelfUpdateProgress,
-} from "@/server/services/self-update-progress";
+import { readProgressFromDir, REVISION_FILE, type SelfUpdateProgress } from "@/server/services/self-update-progress";
 
 const execFileAsync = promisify(execFile);
 const APPLY_TIMEOUT_MS = 20 * 60 * 1000;
 
-export type { SelfUpdateMode, SelfUpdateSidecar };
+export type { SelfUpdateMode };
 
 export type SelfUpdateStatus = {
   enabled: boolean;
   mode: SelfUpdateMode;
-  sidecar: SelfUpdateSidecar;
   currentVersion: string;
   sourceVersion: string | null;
   remoteVersion: string | null;
@@ -69,23 +46,15 @@ let applyInFlight = false;
 
 function options() {
   return {
-    installDirHost: process.env.CLOUDORA_INSTALL_DIR ?? null,
-    installDirMount: process.env.CLOUDORA_INSTALL_MOUNT ?? process.env.CLOUDORA_INSTALL_DIR ?? process.cwd(),
+    installDir: process.env.CLOUDORA_INSTALL_DIR?.trim() || process.cwd(),
     repo: process.env.CLOUDORA_REPO ?? DEFAULT_GITHUB_REPO,
     branch: process.env.CLOUDORA_BRANCH ?? DEFAULT_GITHUB_BRANCH,
   };
 }
 
 function progressDir(): string | null {
-  const signal = resolveUpdateSignalDir();
-  if (isSignalDirReady(signal)) return signal;
-  const mount = options().installDirMount;
-  return mount && existsSync(mount) ? mount : null;
-}
-
-function sidecarState(): SelfUpdateSidecar {
-  if (!existsSync("/.dockerenv")) return "host";
-  return isSignalDirReady(resolveUpdateSignalDir()) ? "ready" : "missing";
+  const dir = options().installDir;
+  return dir && existsSync(dir) ? dir : null;
 }
 
 function readSourceVersion(dir: string): string | null {
@@ -111,32 +80,32 @@ function readLocalRevision(dir: string | null): string | null {
 }
 
 function isUpdaterRunning(): boolean {
-  const signalDir = resolveUpdateSignalDir();
-  return isSignalDirReady(signalDir) && isUpdateBusyFromSignal(signalDir);
+  const dir = progressDir();
+  if (!dir) return false;
+  if (existsSync(path.join(dir, ".cloudora-update.lock"))) return true;
+  const file = readProgressFromDir(dir);
+  return Boolean(file && file.step !== "done" && file.step !== "error");
 }
 
 export async function getSelfUpdateStatus(): Promise<SelfUpdateStatus> {
   const opts = options();
-  const sidecar = sidecarState();
   const updating = applyInFlight || isUpdaterRunning();
-  const mount = opts.installDirMount;
-  const sourceDir = mount && existsSync(path.join(mount, "package.json")) ? mount : null;
-  const sourceVersion = sourceDir ? readSourceVersion(mount) : null;
-  const enabled = Boolean(opts.installDirHost) || sidecar === "ready" || sidecar === "host";
-  const mode = resolveSelfUpdateMode(sidecar, enabled);
+  const sourceDir = existsSync(path.join(opts.installDir, "package.json")) ? opts.installDir : null;
+  const sourceVersion = sourceDir ? readSourceVersion(opts.installDir) : null;
+  const enabled = Boolean(opts.installDir);
+  const mode = resolveSelfUpdateMode(enabled);
 
   const base: SelfUpdateStatus = {
     enabled,
     mode,
-    sidecar,
     currentVersion: APP_VERSION,
     sourceVersion,
     remoteVersion: null,
     localRevision: readLocalRevision(progressDir()),
     remoteRevision: null,
     updateAvailable: false,
-    message: enabled && sidecar !== "missing" ? "Prüfe GitHub…" : selfUpdateUnavailableMessage(sidecar),
-    installDir: opts.installDirHost ?? mount,
+    message: enabled ? "Prüfe GitHub…" : selfUpdateUnavailableMessage(),
+    installDir: opts.installDir,
     repo: opts.repo,
     branch: opts.branch,
     targetTag: null,
@@ -146,7 +115,7 @@ export async function getSelfUpdateStatus(): Promise<SelfUpdateStatus> {
     targetVersion: null,
   };
 
-  if (!enabled || sidecar === "missing") return withProgress(base);
+  if (!enabled) return withProgress(base);
 
   let remoteRevision: string | null = null;
   let shaError: string | null = null;
@@ -212,39 +181,28 @@ export async function getSelfUpdateStatus(): Promise<SelfUpdateStatus> {
 }
 
 async function withProgress(status: SelfUpdateStatus): Promise<SelfUpdateStatus> {
-  const dir = progressDir();
-  const file = readProgressFromDir(dir);
-  const logs = status.updating ? parseUpdaterLogs(readComposeLogsFromDir(dir) ?? "") : null;
-  const progress = mergeProgress(file, logs);
+  const progress = readProgressFromDir(progressDir());
   return { ...status, progress: status.updating || progress?.step === "error" ? progress : progress };
 }
 
 export async function applySelfUpdate(): Promise<{ ok: boolean; message: string; mode: SelfUpdateMode }> {
   if (applyInFlight || isUpdaterRunning()) {
-    return { ok: false, message: "Update läuft bereits", mode: resolveSelfUpdateMode(sidecarState(), true) };
+    return { ok: false, message: "Update läuft bereits", mode: resolveSelfUpdateMode(true) };
   }
   const status = await getSelfUpdateStatus();
   if (!status.enabled) return { ok: false, message: status.message, mode: status.mode };
   if (!status.updateAvailable) {
     return { ok: false, message: status.message, mode: status.mode };
   }
-  if (status.sidecar === "missing") {
-    return { ok: false, message: status.message, mode: status.mode };
-  }
 
-  const opts = options();
-  const hostDir = opts.installDirHost ?? opts.installDirMount;
-  const mount = opts.installDirMount;
-  if (!hostDir || !mount) {
+  const installDir = options().installDir;
+  if (!installDir) {
     return { ok: false, message: "CLOUDORA_INSTALL_DIR ist nicht gesetzt", mode: "native" };
   }
 
   applyInFlight = true;
   try {
-    if (!existsSync("/.dockerenv")) {
-      return await applyOnHost(mount, opts.repo, opts.branch, status.targetTag);
-    }
-    return applyViaSignal(hostDir, opts.repo, status.targetTag);
+    return await applyOnHost(installDir, options().repo, options().branch, status.targetTag);
   } finally {
     applyInFlight = false;
   }
@@ -263,8 +221,6 @@ async function applyOnHost(installMount: string, repo: string, branch: string, t
         CLOUDORA_REPO: repo,
         CLOUDORA_BRANCH: branch,
         CLOUDORA_RELEASE_TAG: tag ?? "",
-        CLOUDORA_SKIP_COMPOSE: "0",
-        CLOUDORA_RUNTIME: "native",
       },
       timeout: APPLY_TIMEOUT_MS,
       maxBuffer: 4 * 1024 * 1024,
@@ -277,36 +233,6 @@ async function applyOnHost(installMount: string, repo: string, branch: string, t
       ok: false,
       mode: "native" as const,
       message: [err.message, err.stderr, err.stdout].filter(Boolean).join("\n") || String(error),
-    };
-  }
-}
-
-function applyViaSignal(hostDir: string, repo: string, tag: string | null) {
-  const signalDir = resolveUpdateSignalDir();
-  if (!isSignalDirReady(signalDir)) {
-    return {
-      ok: false,
-      mode: "docker" as const,
-      message: "Self-Update-Sidecar fehlt. Docker-Stack mit docker compose up -d neu erzeugen.",
-    };
-  }
-  if (isUpdateBusyFromSignal(signalDir)) {
-    return { ok: false, mode: "docker" as const, message: "Update läuft bereits" };
-  }
-  try {
-    writeUpdateTarget(signalDir, tag);
-    writeUpdateRequest(signalDir);
-    logger.info({ hostDir, repo, tag, signalDir }, "Cloudora update requested via sidecar");
-    return {
-      ok: true,
-      mode: "docker" as const,
-      message: "Updater gestartet. Cloudora wird neu gebaut und kommt gleich zurück.",
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      mode: "docker" as const,
-      message: error instanceof Error ? error.message : String(error),
     };
   }
 }

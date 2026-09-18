@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { AppError } from "@/lib/errors";
 import { browseLinuxDirectories, inspectLinuxPath, mkdirLinuxDirectory, normalizeBrowsePath } from "@/server/storage/browse-linux";
+import { isBlockedSystemPath, isWritableDir, toFilesystemPath } from "@/server/storage/host-fs";
 
 describe("linux folder browse", () => {
   it("normalizes and rejects traversal", () => {
@@ -32,7 +33,7 @@ describe("linux folder browse", () => {
     expect(result.entries.some((e) => e.name === ".hidden")).toBe(false);
     expect(result.entries.some((e) => e.name === "file.txt")).toBe(false);
     expect(result.truncated).toBe(false);
-    expect(typeof result.writable).toBe("boolean");
+    expect(result.writable).toBe(true);
   });
 
   it("inspects relative paths against the storage root", () => {
@@ -43,47 +44,18 @@ describe("linux folder browse", () => {
     expect(found.isDirectory).toBe(true);
     expect(found.insideVolume).toBe(true);
     expect(found.configured).toBe("users");
+    expect(found.writable).toBe(true);
     const missing = inspectLinuxPath("users/missing", root);
     expect(missing.exists).toBe(false);
     expect(missing.insideVolume).toBe(true);
   });
 
-  it("treats the compose host-storage path as the writable volume", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-hostvol-"));
-    try {
-      const inspected = inspectLinuxPath("/mnt/cloudora", root, [], "/mnt/cloudora");
-      expect(inspected.insideVolume).toBe(true);
-      expect(inspected.hostBrowse).toBe(false);
-      expect(inspected.exists).toBe(true);
-      expect(inspected.writable).toBe(true);
-      expect(inspected.live).toBe(true);
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("treats host-browse paths as not writable until a live bind exists", () => {
-    const host = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-hostinspect-"));
-    fs.mkdirSync(path.join(host, "mnt"));
-    fs.mkdirSync(path.join(host, "mnt", "clustern"));
-    process.env.CLOUDORA_HOST_ROOT = host;
-    try {
-      const inspected = inspectLinuxPath("/mnt/clustern", "/storage");
-      expect(inspected.exists).toBe(true);
-      expect(inspected.isDirectory).toBe(true);
-      expect(inspected.hostBrowse).toBe(true);
-      expect(inspected.writable).toBe(false);
-      expect(inspected.linked).toBe(false);
-      expect(inspected.live).toBe(false);
-      const bound = inspectLinuxPath("/mnt/clustern", "/storage", [
-        { id: "shared-host", hostPath: "/mnt/clustern", containerPath: path.join(host, "mnt", "clustern") },
-      ]);
-      expect(bound.linked).toBe(true);
-      expect(bound.writable).toBe(false);
-    } finally {
-      delete process.env.CLOUDORA_HOST_ROOT;
-      fs.rmSync(host, { recursive: true, force: true });
-    }
+  it("reports writable for a real host directory", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-write-"));
+    const inspected = inspectLinuxPath(root, root);
+    expect(inspected.exists).toBe(true);
+    expect(inspected.writable).toBe(true);
+    expect(isWritableDir(root)).toBe(true);
   });
 
   it("creates a folder next to the browse target", () => {
@@ -93,24 +65,12 @@ describe("linux folder browse", () => {
     expect(() => mkdirLinuxDirectory(root, "neu")).toThrow(AppError);
     expect(() => mkdirLinuxDirectory("/", "nope")).toThrow(AppError);
   });
+});
 
-  it("creates a folder through an extra-volume bind instead of host browse", () => {
-    const host = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-hostmkdir-"));
-    const live = fs.mkdtempSync(path.join(os.tmpdir(), "cloudora-livemkdir-"));
-    fs.mkdirSync(path.join(host, "mnt"));
-    fs.mkdirSync(path.join(host, "mnt", "hdd"));
-    process.env.CLOUDORA_HOST_ROOT = host;
-    try {
-      const created = mkdirLinuxDirectory("/mnt/hdd", "neu", [
-        { id: "hdd", hostPath: "/mnt/hdd", containerPath: live },
-      ]);
-      expect(created).toBe("/mnt/hdd/neu");
-      expect(fs.statSync(path.join(live, "neu")).isDirectory()).toBe(true);
-      expect(fs.existsSync(path.join(host, "mnt", "hdd", "neu"))).toBe(false);
-    } finally {
-      delete process.env.CLOUDORA_HOST_ROOT;
-      fs.rmSync(host, { recursive: true, force: true });
-      fs.rmSync(live, { recursive: true, force: true });
-    }
+describe("native host paths", () => {
+  it("does not remap through /host", () => {
+    expect(toFilesystemPath("/mnt/data")).toBe(path.resolve("/mnt/data"));
+    expect(isBlockedSystemPath("/proc")).toBe(true);
+    expect(isBlockedSystemPath("/mnt/data")).toBe(false);
   });
 });

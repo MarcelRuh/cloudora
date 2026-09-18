@@ -1,3 +1,0 @@
-# /mnt, /media und /srv sind bereits im Container. Override nur für Sonderfälle (z. B. /home).
-
-services: {}

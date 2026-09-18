@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.13 – 2026-09-18
+
+- Nur noch native systemd: Docker Compose, Sidecar und `/host`-Browse entfernt
+- Path-Picker prüft den echten Host-Pfad; „nicht beschreibbar“ nur noch bei fehlendem OS-Schreibrecht
+- Docker-`.env` mit `CLOUDORA_STORAGE_PATH=/storage` nutzt `CLOUDORA_HOST_STORAGE`, falls das ein Host-Pfad ist
+
 ## 1.3.12 – 2026-09-15
 
 - Administration → Links: alle öffentlichen und Einmal-Links aller Benutzer sperren oder restlos löschen

@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# Cloudora installer — native (Node + PostgreSQL + systemd) by default.
-# CLOUDORA_INSTALL_MODE=docker keeps the Compose stack.
+# Cloudora installer — native Node.js + PostgreSQL + systemd.
 #
 # wget -qO- https://raw.githubusercontent.com/MarcelRuh/cloudora/main/scripts/install.sh | bash
 set -euo pipefail
 
 REPO_URL="${CLOUDORA_REPO_URL:-https://github.com/MarcelRuh/cloudora.git}"
-MODE="${CLOUDORA_INSTALL_MODE:-native}"
 
 # wget|bash setzt BASH_SOURCE nicht (und $0 ist oft "main").
 SOURCE_ROOT=""
@@ -119,22 +117,6 @@ as_postgres() {
   fi
 }
 
-docker_ready() {
-  command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1
-}
-
-install_docker() {
-  if docker_ready; then
-    log "Docker und Compose sind bereits installiert."
-    return
-  fi
-  log "Installiere Docker Engine + Compose Plugin…"
-  wget -qO- https://get.docker.com | sh
-  systemctl enable docker >/dev/null 2>&1 || true
-  systemctl start docker >/dev/null 2>&1 || true
-  docker_ready || die "Docker Compose ist nach der Installation nicht verfügbar."
-}
-
 sync_sources() {
   mkdir -p "$(dirname "$DIR")"
   if [[ -d "${DIR}/.git" || -f "${DIR}/package.json" ]]; then
@@ -160,26 +142,34 @@ prepare_env() {
   if ! grep -q '^CLOUDORA_INSTALL_DIR=' .env 2>/dev/null; then
     echo "CLOUDORA_INSTALL_DIR=${DIR}" >> .env
   fi
-  if [[ "$MODE" == "native" ]]; then
-    if grep -q '^CLOUDORA_RUNTIME=' .env; then
-      sed -i 's/^CLOUDORA_RUNTIME=.*/CLOUDORA_RUNTIME=native/' .env
+  # Docker-Reste: /storage im Container, echter Pfad in CLOUDORA_HOST_STORAGE.
+  local storage hostst
+  storage="$(env_get CLOUDORA_STORAGE_PATH "")"
+  hostst="$(env_get CLOUDORA_HOST_STORAGE "")"
+  if [[ -z "$storage" || "$storage" == "/storage" || "$storage" == "./storage" ]]; then
+    if [[ "$hostst" == /* && "$hostst" != "/storage" ]]; then
+      storage="$hostst"
     else
-      echo "CLOUDORA_RUNTIME=native" >> .env
-    fi
-    if grep -q '^CLOUDORA_STORAGE_PATH=/storage$' .env || ! grep -q '^CLOUDORA_STORAGE_PATH=' .env; then
-      if grep -q '^CLOUDORA_STORAGE_PATH=' .env; then
-        sed -i "s|^CLOUDORA_STORAGE_PATH=.*|CLOUDORA_STORAGE_PATH=${DIR}/storage|" .env
-      else
-        echo "CLOUDORA_STORAGE_PATH=${DIR}/storage" >> .env
-      fi
-    fi
-    if grep -q '^CLOUDORA_HOST_STORAGE=' .env; then
-      sed -i "s|^CLOUDORA_HOST_STORAGE=.*|CLOUDORA_HOST_STORAGE=${DIR}/storage|" .env
-    else
-      echo "CLOUDORA_HOST_STORAGE=${DIR}/storage" >> .env
+      storage="${DIR}/storage"
     fi
   fi
-  mkdir -p "$(env_get CLOUDORA_STORAGE_PATH "${DIR}/storage")"
+  if grep -q '^CLOUDORA_STORAGE_PATH=' .env; then
+    sed -i "s|^CLOUDORA_STORAGE_PATH=.*|CLOUDORA_STORAGE_PATH=${storage}|" .env
+  else
+    echo "CLOUDORA_STORAGE_PATH=${storage}" >> .env
+  fi
+  if grep -q '^CLOUDORA_HOST_STORAGE=' .env; then
+    sed -i "s|^CLOUDORA_HOST_STORAGE=.*|CLOUDORA_HOST_STORAGE=${storage}|" .env
+  else
+    echo "CLOUDORA_HOST_STORAGE=${storage}" >> .env
+  fi
+  if grep -q '^CLOUDORA_RUNTIME=' .env; then
+    sed -i 's/^CLOUDORA_RUNTIME=.*/CLOUDORA_RUNTIME=native/' .env
+  fi
+  if grep -q '^CLOUDORA_HOST_ROOT=' .env; then
+    sed -i '/^CLOUDORA_HOST_ROOT=/d' .env
+  fi
+  mkdir -p "$storage"
   chmod +x scripts/*.sh 2>/dev/null || true
 }
 
@@ -235,16 +225,11 @@ start_native() {
   systemctl --no-pager --full status cloudora | head -20 || true
 }
 
-start_docker() {
-  log "Starte Cloudora mit Docker Compose…"
-  docker compose up -d --build
-}
-
 print_done() {
   local ip
   ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
   echo
-  echo "Cloudora läuft (${MODE})."
+  echo "Cloudora läuft (native systemd)."
   echo "  Lokal:   http://127.0.0.1:3000"
   if [[ -n "${ip:-}" ]]; then
     echo "  Netzwerk: http://${ip}:3000"
@@ -259,13 +244,8 @@ need_root
 install_base_packages
 sync_sources
 prepare_env
-if [[ "$MODE" == "docker" ]]; then
-  install_docker
-  start_docker
-else
-  install_node
-  install_postgres
-  setup_postgres_db
-  start_native
-fi
+install_node
+install_postgres
+setup_postgres_db
+start_native
 print_done

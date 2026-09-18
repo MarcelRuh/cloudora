@@ -92,10 +92,10 @@ describe("progress parser", () => {
     expect(parsed).toEqual({ percent: 42, step: "buildWeb", detail: "Building" });
   });
 
-  it("parses compose logs and never goes backwards", () => {
-    const logs = "==> Cloudora self-update\nCompiled successfully\nContainer cloudora Started\n";
+  it("parses updater logs and never goes backwards", () => {
+    const logs = "==> Cloudora self-update\n==> [70%] buildWeb – next build\n==> Done. Cloudora native service restarted.\n";
     const p = parseUpdaterLogs(logs);
-    expect(p?.percent).toBeGreaterThanOrEqual(90);
+    expect(p?.percent).toBeGreaterThanOrEqual(70);
     expect(
       mergeProgress({ percent: 100, step: "done", detail: null }, { percent: 12, step: "resolve", detail: null })?.percent,
     ).toBe(12);

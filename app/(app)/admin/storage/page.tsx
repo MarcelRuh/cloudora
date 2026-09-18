@@ -152,7 +152,7 @@ export default function StoragePage() {
               onChange={setStoragePath}
               storageRoot={storagePath}
               placeholder="/home/cloudora/storage"
-              hint="Absoluter Linux-Pfad. Native: z. B. /home/cloudora/storage."
+              hint="Absoluter Linux-Pfad, z. B. /opt/cloudora/storage oder /mnt/data."
             />
             <PathPickerField
               label="Benutzer-Ordner"
@@ -160,7 +160,6 @@ export default function StoragePage() {
               onChange={setUsersDir}
               storageRoot={storagePath}
               preferRelative
-              volumeRootRelative="users"
               placeholder="users oder /home"
               hint="Relativ zum Storage-Root (users)."
             />
@@ -170,7 +169,6 @@ export default function StoragePage() {
               onChange={setSharedDir}
               storageRoot={storagePath}
               preferRelative
-              volumeRootRelative="shared"
               placeholder="shared"
               hint="Relativ zum Storage-Root (shared)."
             />

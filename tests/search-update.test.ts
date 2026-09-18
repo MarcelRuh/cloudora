@@ -32,17 +32,15 @@ describe("file index keys", () => {
 });
 
 describe("self-update mode", () => {
-  it("maps sidecar to native or docker", () => {
-    expect(resolveSelfUpdateMode("host", true)).toBe("native");
-    expect(resolveSelfUpdateMode("ready", true)).toBe("docker");
-    expect(resolveSelfUpdateMode("missing", true)).toBe("none");
-    expect(resolveSelfUpdateMode("host", false)).toBe("none");
+  it("is native when enabled", () => {
+    expect(resolveSelfUpdateMode(true)).toBe("native");
+    expect(resolveSelfUpdateMode(false)).toBe("none");
   });
 
-  it("uses native install-dir copy when disabled", () => {
-    expect(selfUpdateUnavailableMessage("host")).toContain("CLOUDORA_INSTALL_DIR");
-    expect(selfUpdateUnavailableMessage("host")).not.toContain("Compose");
-    expect(selfUpdateUnavailableMessage("missing")).toContain("docker compose");
+  it("points to the install dir when unavailable", () => {
+    expect(selfUpdateUnavailableMessage()).toContain("CLOUDORA_INSTALL_DIR");
+    expect(selfUpdateUnavailableMessage()).not.toContain("Compose");
+    expect(selfUpdateUnavailableMessage()).not.toContain("docker");
   });
 
   it("formats ready status", () => {

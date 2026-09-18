@@ -9,8 +9,7 @@ import { APP_VERSION } from "@/lib/version";
 
 type SelfUpdateStatus = {
   enabled: boolean;
-  mode?: "native" | "docker" | "none";
-  sidecar: "ready" | "missing" | "host";
+  mode?: "native" | "none";
   currentVersion: string;
   remoteVersion: string | null;
   localRevision: string | null;
@@ -37,24 +36,11 @@ const STEP_LABELS: Record<string, string> = {
   buildWeb: "Anwendung bauen",
   deps: "Abhängigkeiten",
   migrate: "Datenbank",
-  export: "Image exportieren",
   startWeb: "Neustart",
   finalize: "Abschluss",
   done: "Fertig",
   error: "Fehler",
   apply: "Aktualisieren",
-};
-
-const MODE_LABELS: Record<NonNullable<SelfUpdateStatus["mode"]>, string> = {
-  native: "Native (systemd)",
-  docker: "Docker Compose",
-  none: "Nicht konfiguriert",
-};
-
-const SIDECAR_LABELS = {
-  ready: "Docker-Sidecar bereit",
-  missing: "Docker-Sidecar fehlt",
-  host: "systemd auf dem Host",
 };
 
 function shortRev(value: string | null | undefined): string {
@@ -98,11 +84,8 @@ export function SelfUpdateCard() {
   const handleApply = async () => {
     const from = status?.currentVersion ?? APP_VERSION;
     const to = status?.targetVersion ?? "latest";
-    const native = status?.mode === "native" || status?.sidecar === "host";
     const ok = window.confirm(
-      native
-        ? `Cloudora aktualisieren?\n\nHolt den Stand von GitHub, baut nativ und startet den systemd-Dienst neu. ${from} → ${to}.\nLokale Änderungen außer .env und Storage werden überschrieben.`
-        : `Cloudora aktualisieren?\n\nHolt den Stand von GitHub und baut den Docker-Stack neu. ${from} → ${to}.\nLokale Änderungen außer .env und Storage werden überschrieben.`,
+      `Cloudora aktualisieren?\n\nHolt den Stand von GitHub, baut nativ und startet den systemd-Dienst neu. ${from} → ${to}.\nLokale Änderungen außer .env und Storage werden überschrieben.`,
     );
     if (!ok) return;
     setBusy(true);
@@ -174,13 +157,11 @@ export function SelfUpdateCard() {
             <dt>Installationspfad</dt>
             <dd>{status.installDir ?? "—"}</dd>
             <dt>Betrieb</dt>
-            <dd>{MODE_LABELS[status.mode ?? (status.sidecar === "host" ? "native" : status.sidecar === "ready" ? "docker" : "none")]}</dd>
+            <dd>Native (systemd)</dd>
             <dt>Lokal</dt>
             <dd className="font-mono">{shortRev(status.localRevision)}</dd>
             <dt>Remote</dt>
             <dd className="font-mono">{shortRev(status.remoteRevision)}</dd>
-            <dt>Updater</dt>
-            <dd>{SIDECAR_LABELS[status.sidecar]}</dd>
           </dl>
           {showProgress ? (
             <div className="mt-4 space-y-2">
@@ -204,7 +185,7 @@ export function SelfUpdateCard() {
             {canApply ? (
               <Button
                 size="sm"
-                disabled={busy || status.updating || status.sidecar === "missing" || !status.updateAvailable}
+                disabled={busy || status.updating || status.mode === "none" || !status.updateAvailable}
                 onClick={() => void handleApply()}
               >
                 {busy || status.updating ? "Aktualisiere…" : "Jetzt aktualisieren"}

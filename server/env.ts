@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { isBuildPhase } from "@/lib/utils";
 
 function read(name: string, fallback = ""): string {
@@ -46,11 +45,11 @@ export function getEnv() {
     encryptionKey: readRequired("ENCRYPTION_KEY", "change-me-to-a-long-random-encryption-key"),
     sessionDays: parseIntEnv("SESSION_DAYS", 7),
     cookieSecure: parseBool(process.env.COOKIE_SECURE, https),
-    storagePath: read("CLOUDORA_STORAGE_PATH", "/storage"),
-    hostStorage: read("CLOUDORA_HOST_STORAGE", "./storage"),
+    storagePath: resolveStoragePath(),
+    hostStorage: resolveStoragePath(),
     usersDir: sanitizeRelDir(read("CLOUDORA_USERS_DIR", "users"), "users"),
     sharedDir: sanitizeRelDir(read("CLOUDORA_SHARED_DIR", "shared"), "shared"),
-    runtime: parseRuntime(),
+    runtime: "native" as const,
     installDir: read("CLOUDORA_INSTALL_DIR", ""),
     maxUploadBytes: parseIntEnv("MAX_UPLOAD_BYTES", 32 * 1024 * 1024 * 1024),
     maxZipFiles: parseIntEnv("MAX_ZIP_FILES", 5_000),
@@ -64,11 +63,16 @@ export function getEnv() {
   };
 }
 
-function parseRuntime(): "native" | "docker" {
-  const raw = (process.env.CLOUDORA_RUNTIME ?? "").trim().toLowerCase();
-  if (raw === "native" || raw === "docker") return raw;
-  if (isBuildPhase()) return "native";
-  return existsSync("/.dockerenv") ? "docker" : "native";
+/** Native host path. Docker leftovers `/storage` plus `CLOUDORA_HOST_STORAGE=/mnt/…` resolve to the host bind. */
+function resolveStoragePath(): string {
+  const storage = read("CLOUDORA_STORAGE_PATH", "").trim();
+  const host = read("CLOUDORA_HOST_STORAGE", "").trim();
+  const hostAbs = host.startsWith("/") && host !== "/storage" ? host : "";
+  if (!storage || storage === "/storage" || storage === "./storage") {
+    if (hostAbs) return hostAbs;
+    return storage || "./storage";
+  }
+  return storage;
 }
 
 function sanitizeRelDir(value: string, fallback: string): string {

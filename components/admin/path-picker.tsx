@@ -44,7 +44,7 @@ const LOCATION_TABS: Array<{ id: LocationTab; label: string; path: string }> = [
   { id: "home", label: "Home", path: "/home" },
   { id: "mounts", label: "Mounts", path: "/mnt" },
   { id: "media", label: "Media", path: "/media" },
-  { id: "storage", label: "Storage", path: "/storage" },
+  { id: "storage", label: "Storage", path: "" },
 ];
 
 function breadcrumbs(absPath: string): Array<{ label: string; path: string }> {
@@ -142,7 +142,6 @@ export function PathPickerField({
   storageRoot,
   preferRelative = false,
   showStatus = true,
-  volumeRootRelative,
 }: {
   label: string;
   value: string;
@@ -152,7 +151,6 @@ export function PathPickerField({
   storageRoot?: string;
   preferRelative?: boolean;
   showStatus?: boolean;
-  volumeRootRelative?: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -176,7 +174,6 @@ export function PathPickerField({
           initialPath={value}
           storageRoot={storageRoot}
           preferRelative={preferRelative}
-          volumeRootRelative={volumeRootRelative}
           onSelect={(next) => {
             onChange(next);
             setOpen(false);
@@ -192,14 +189,12 @@ function LinuxFolderBrowser({
   initialPath,
   storageRoot: storageRootProp,
   preferRelative,
-  volumeRootRelative,
   onSelect,
   onClose,
 }: {
   initialPath: string;
   storageRoot?: string;
   preferRelative: boolean;
-  volumeRootRelative?: string;
   onSelect: (path: string) => void;
   onClose: () => void;
 }) {
@@ -208,11 +203,10 @@ function LinuxFolderBrowser({
   const filterRef = useRef<HTMLInputElement>(null);
   const storageQuery = useQuery({
     queryKey: ["admin-storage"],
-    queryFn: () => api<{ storagePath: string; hostStorage: string }>("/api/admin/storage"),
+    queryFn: () => api<{ storagePath: string }>("/api/admin/storage"),
     staleTime: 30_000,
   });
-  const storageRoot = (storageRootProp || storageQuery.data?.storagePath || "/storage").replace(/\/+$/, "") || "/storage";
-  const hostStorage = storageQuery.data?.hostStorage;
+  const storageRoot = (storageRootProp || storageQuery.data?.storagePath || "").replace(/\/+$/, "");
 
   const start = useMemo(() => {
     const raw = initialPath.trim();
@@ -302,23 +296,7 @@ function LinuxFolderBrowser({
 
   const choose = (absPath: string) => {
     if (absPath === "/") return;
-    const host = (data?.hostStorage || hostStorage || "").replace(/\\/g, "/").replace(/\/+$/, "");
-    const remapHostStorage = !storageRootProp;
-    if (
-      remapHostStorage &&
-      host &&
-      host.startsWith("/") &&
-      (absPath === host || absPath.startsWith(`${host}/`))
-    ) {
-      const rest = absPath === host ? "" : absPath.slice(host.length + 1);
-      if (!rest) {
-        onSelect(preferRelative ? volumeRootRelative || "shared" : storageRoot);
-        return;
-      }
-      onSelect(preferRelative ? rest : `${storageRoot}/${rest}`);
-      return;
-    }
-    onSelect(toConfiguredFromAbsolute(absPath, storageRoot, preferRelative));
+    onSelect(toConfiguredFromAbsolute(absPath, storageRoot || absPath, preferRelative));
   };
 
   const createFolder = async () => {
@@ -427,16 +405,16 @@ function LinuxFolderBrowser({
           onChange={(id) => {
             const tab = LOCATION_TABS.find((item) => item.id === id);
             if (!tab) return;
-            go(id === "storage" ? storageRoot : tab.path);
+            go(id === "storage" && storageRoot ? storageRoot : tab.path);
           }}
           tabs={LOCATION_TABS.map((tab) => {
-            const target = tab.id === "storage" ? storageRoot : tab.path;
+            const target = tab.id === "storage" && storageRoot ? storageRoot : tab.path;
             const shortcut = shortcutByPath.get(target);
             const knownMissing = Boolean(data) && tab.id !== "linux" && tab.id !== "storage" && !shortcut;
             return {
               id: tab.id,
               label: tab.label,
-              disabled: knownMissing && tab.id !== "storage",
+              disabled: (tab.id === "storage" && !storageRoot) || (knownMissing && tab.id !== "storage"),
             };
           })}
         />
